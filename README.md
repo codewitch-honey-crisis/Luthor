@@ -38,7 +38,7 @@ For a lexer, rules are each on a line, and accept indexes are assigned in expres
 
 ## Lexer array format
 
-Luther arrays come in two flavors: Range arrays and non-range arrays. This is so the smallest possible array and matching code can be used for the situation. Sometimes range arrays end up smaller, sometimes non-range arrays end up smaller, especially for simple expressions without a lot of character sets.
+Luthor arrays come in two flavors: Range arrays and non-range arrays. This is so the smallest possible array and matching code can be used for the situation. Sometimes range arrays end up smaller, sometimes non-range arrays end up smaller, especially for simple expressions without a lot of character sets.
 
 Range arrays are always even in length. Non range arrays are always odd in length, and may be padded with a trailing -1 element to enforce that.
 

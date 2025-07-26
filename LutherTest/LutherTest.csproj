@@ -1,0 +1,35 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Luthor\AstExtensions.cs" Link="AstExtensions.cs" />
+    <Compile Include="..\Luthor\Dfa.Compute.cs" Link="Dfa.Compute.cs" />
+    <Compile Include="..\Luthor\Dfa.cs" Link="Dfa.cs" />
+    <Compile Include="..\Luthor\DfaBuilder.cs" Link="DfaBuilder.cs" />
+    <Compile Include="..\Luthor\DfaUtf16Transformer.cs" Link="DfaUtf16Transformer.cs" />
+    <Compile Include="..\Luthor\DfaUtf8Transformer.cs" Link="DfaUtf8Transformer.cs" />
+    <Compile Include="..\Luthor\RegexExpression.CharacterClasses.cs" Link="RegexExpression.CharacterClasses.cs" />
+    <Compile Include="..\Luthor\RegexExpression.CharacterClasses.Known.cs" Link="RegexExpression.CharacterClasses.Known.cs" />
+    <Compile Include="..\Luthor\RegExpression.cs" Link="RegExpression.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="MSTest" Version="3.6.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Luthor\Luthor.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+  </ItemGroup>
+
+</Project>

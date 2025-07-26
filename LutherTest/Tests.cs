@@ -952,15 +952,15 @@ namespace Luthor
                 bool found = false;
 
                 // Parse current state's transitions from array
-                int stateIndex = currentStateIndex;
-                int acceptId = dfa[stateIndex++];
-                int transitionCount = dfa[stateIndex++];
+                int machineIndex = currentStateIndex;
+                int acceptId = dfa[machineIndex++];
+                int transitionCount = dfa[machineIndex++];
 
                 // Check each transition (like foreach transition in working version)
                 for (int t = 0; t < transitionCount; t++)
                 {
-                    int destStateIndex = dfa[stateIndex++];
-                    int rangeCount = dfa[stateIndex++];
+                    int destStateIndex = dfa[machineIndex++];
+                    int rangeCount = dfa[machineIndex++];
 
                     // Check if any range in this transition matches
                     bool transitionMatches = false;
@@ -969,15 +969,15 @@ namespace Luthor
                         int min, max;
                         if (isRangeArray)
                         {
-                            min = dfa[stateIndex++];
-                            max = dfa[stateIndex++];
+                            min = dfa[machineIndex++];
+                            max = dfa[machineIndex++];
                         }
                         else
                         {
-                            min = max = dfa[stateIndex++];
+                            min = max = dfa[machineIndex++];
                         }
 
-                        // Check anchor transitions first (exact same logic as working version)
+                        // Check anchor transitions first
                         if (min == -2 && max == -2)  // START_ANCHOR ^
                         {
                             if (atLineStart)
@@ -999,7 +999,7 @@ namespace Luthor
                                 break;
                             }
                         }
-                        // Check character transitions (exact same logic as working version)
+                        // Check character transitions
                         else if (min >= 0 && position < bytes.Length)
                         {
                             byte c = bytes[position];
@@ -1016,7 +1016,7 @@ namespace Luthor
                         }
                     }
 
-                    if (transitionMatches) break; // Exit transition loop, just like working version
+                    if (transitionMatches) break; // Exit transition loop
                 }
 
                 if (!found)
@@ -1028,7 +1028,7 @@ namespace Luthor
                     return;
                 }
 
-                // Check for acceptance (exact same logic as working version)
+                // Check for acceptance 
                 int currentAcceptId = dfa[currentStateIndex];
                 if (currentAcceptId != -1)
                 {

@@ -1,12 +1,16 @@
 {
   "profiles": {
-    "Luthor": {
-      "commandName": "Project",
-      "commandLineArgs": "[A-Z_a-z][A-Z_a-z0-9]*"
-    },
     "Usage": {
       "commandName": "Project",
       "commandLineArgs": "--?"
+    },
+    "Identifier": {
+      "commandName": "Project",
+      "commandLineArgs": "[A-Z_a-z][A-Z_a-z0-9]*"
+    },
+    "Line Comment": {
+      "commandName": "Project",
+      "commandLineArgs": "/\\*(.|\\n)*?\\*/"
     }
   }
 }

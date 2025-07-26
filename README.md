@@ -90,7 +90,7 @@ Emitting ranged jump table array:
 97, 122
 ```
 
-Those integers are your magic sauce. In the languge of your choice, wrap them in the syntax for an integer array. You then create simple matching code for it like so (example lexer in C)
+Those integers are your magic sauce. In the language of your choice, wrap them in the syntax for an integer array. You then create simple matching code for it like so (example lexer in C)
 
 ```c
 

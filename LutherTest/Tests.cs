@@ -721,7 +721,6 @@ namespace Luthor
                 Console.WriteLine(lexer);
 
                 var dfa = ast.ToDfa();
-
                 dfa.RenderToFile(@"..\..\..\dfa.dot");
                 dfa.RenderToFile(@"..\..\..\dfa.jpg");
                 Console.WriteLine("DFA construction successful!");

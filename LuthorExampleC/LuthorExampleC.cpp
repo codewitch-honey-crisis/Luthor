@@ -8,96 +8,55 @@ static int lex_non_ranged(const char** data, const int* dfa) {
     bool at_line_start = true;
     bool at_line_end = (*sz == '\0') || (*sz != '\0' && sz[1] == '\0' && *sz == '\n');
 
-    // Continue while we have input OR need to process end anchors
     while (*sz != '\0' || at_line_end) {
-        bool found = false;
-
-        // Parse current state's transitions from array
         int machine_index = current_state_index;
         int accept_id = dfa[machine_index++];
         int transition_count = dfa[machine_index++];
 
-        // Check each transition
         for (int t = 0; t < transition_count; t++) {
             int dest_state_index = dfa[machine_index++];
             int range_count = dfa[machine_index++];
 
-            // Check if any range in this transition matches
-            bool transition_matches = false;
             for (int r = 0; r < range_count; r++) {
-                int cmp = dfa[machine_index++];
-
-                // Check anchor transitions first 
-                if (cmp == -2) { // START_ANCHOR ^
-                    if (at_line_start) {
-                        current_state_index = dest_state_index;
-                        at_line_start = false;
-                        found = true;
-                        transition_matches = true;
-                        break;
-                    }
+                int min = dfa[machine_index++];
+                
+                if (min == -2 && at_line_start) {
+                    current_state_index = dest_state_index;
+                    at_line_start = false;
+                    goto found;
                 }
-                else if (cmp == -3) { // END_ANCHOR $
-                    if (at_line_end) {
-                        current_state_index = dest_state_index;
-                        found = true;
-                        transition_matches = true;
-                        break;
-                    }
+                if (min == -3 && at_line_end) {
+                    current_state_index = dest_state_index;
+                    goto found;
                 }
-                // Check character transitions
-                else if (cmp >= 0 && *sz != '\0') {
+                if (min >= 0 && *sz != '\0') {
                     int c = (unsigned char)*sz;
-
-                    if (c < cmp) {
-                        // Early out: skip remaining ranges in this transition
+                    if (c < min) {
                         machine_index += (range_count - (r + 1));
                         break;
                     }
-
-                    if (c == cmp) { // c == min in non-ranged case
+                    if (c == min) {
                         current_state_index = dest_state_index;
-                        sz++; // Advance string pointer
+                        sz++;
                         at_line_end = (*sz == '\0') || (*sz == '\n');
                         at_line_start = (c == '\n');
-                        found = true;
-                        transition_matches = true;
-                        break;
+                        goto found;
                     }
                 }
             }
-            if (transition_matches) break;
         }
+        break; // No transition found
 
-        if (!found) {
-            // No transition found - end matching
-            break;
+    found:
+        if (dfa[current_state_index] != -1) {
+            *data = sz;
+            return dfa[current_state_index];
         }
-
-        // Check for acceptance
-        int current_accept_id = dfa[current_state_index];
-        if (current_accept_id != -1) {
-            *data = sz; // Update output pointer to current position
-            return current_accept_id;
-        }
-
-        // If we processed end anchors and no more input, break
-        if (*sz == '\0') {
-            break;
-        }
+        if (*sz == '\0') break;
     }
 
-    // ALWAYS update cursor position, even on failure
     *data = sz;
-
-    // Check final acceptance state
-    int final_accept_id = dfa[current_state_index];
-    if (final_accept_id != -1) {
-        *data = sz;
-        return final_accept_id;
-    }
-
-    return -1; // No match found
+    return dfa[current_state_index] != -1 ? dfa[current_state_index] : -1;
 }
 
 static int lex_ranged(const char** data, const int* dfa) {
@@ -106,98 +65,57 @@ static int lex_ranged(const char** data, const int* dfa) {
     bool at_line_start = true;
     bool at_line_end = (*sz == '\0') || (*sz != '\0' && sz[1] == '\0' && *sz == '\n');
 
-    // Continue while we have input OR need to process end anchors
     while (*sz != '\0' || at_line_end) {
-        bool found = false;
-
-        // Parse current state's transitions from array
         int machine_index = current_state_index;
         int accept_id = dfa[machine_index++];
         int transition_count = dfa[machine_index++];
 
-        // Check each transition
         for (int t = 0; t < transition_count; t++) {
             int dest_state_index = dfa[machine_index++];
             int range_count = dfa[machine_index++];
 
-            // Check if any range in this transition matches
-            bool transition_matches = false;
             for (int r = 0; r < range_count; r++) {
                 int min = dfa[machine_index++];
                 int max = dfa[machine_index++];
 
-                // Check anchor transitions first 
-                if (min == -2) { // START_ANCHOR ^
-                    if (at_line_start) {
-                        current_state_index = dest_state_index;
-                        at_line_start = false;
-                        found = true;
-                        transition_matches = true;
-                        break;
-                    }
+                if (min == -2 && at_line_start) {
+                    current_state_index = dest_state_index;
+                    at_line_start = false;
+                    goto found;
                 }
-                else if (min == -3) { // END_ANCHOR $
-                    if (at_line_end) {
-                        current_state_index = dest_state_index;
-                        found = true;
-                        transition_matches = true;
-                        break;
-                    }
+                if (min == -3 && at_line_end) {
+                    current_state_index = dest_state_index;
+                    goto found;
                 }
-                // Check character transitions
-                else if (min >= 0 && *sz != '\0') {
+                if (min >= 0 && *sz != '\0') {
                     int c = (unsigned char)*sz;
-
                     if (c < min) {
-                        // Early out: skip remaining ranges in this transition
                         machine_index += ((range_count - (r + 1)) * 2);
                         break;
                     }
-
-                    if (c >= min && c <= max) {
+                    if (c <= max) {
                         current_state_index = dest_state_index;
-                        sz++; // Advance string pointer
+                        sz++;
                         at_line_end = (*sz == '\0') || (*sz == '\n');
                         at_line_start = (c == '\n');
-                        found = true;
-                        transition_matches = true;
-                        break;
+                        goto found;
                     }
                 }
             }
-            if (transition_matches) break;
         }
+        break; // No transition found
 
-        if (!found) {
-            // No transition found - end matching
-            break;
+    found:
+        if (dfa[current_state_index] != -1) {
+            *data = sz;
+            return dfa[current_state_index];
         }
-
-        // Check for acceptance
-        int current_accept_id = dfa[current_state_index];
-        if (current_accept_id != -1) {
-            *data = sz; // Update output pointer to current position
-            return current_accept_id;
-        }
-
-        // If we processed end anchors and no more input, break
-        if (*sz == '\0') {
-            break;
-        }
+        if (*sz == '\0') break;
     }
 
-    // ALWAYS update cursor position, even on failure
     *data = sz;
-
-    // Check final acceptance state
-    int final_accept_id = dfa[current_state_index];
-    if (final_accept_id != -1) {
-        return final_accept_id;
-    }
-
-    return -1; // No match found
+    return dfa[current_state_index] != -1 ? dfa[current_state_index] : -1;
 }
-
 int main()
 {
     static const int ranged_dfa[] = {

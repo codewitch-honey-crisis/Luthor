@@ -727,7 +727,7 @@ namespace Luthor
                 Console.WriteLine("DFA construction successful!");
                 Console.WriteLine($"Start state created with {dfa.Transitions.Count} transitions. State machine has {dfa.FillClosure().Count} states.");
                 // Test the DFA with some strings
-                foreach (var input in inputs) TestDfaUtf32(dfa, input);
+                foreach (var input in inputs) TestUtf32Dfa(dfa, input);
                 
                 Console.WriteLine();
 
@@ -740,7 +740,7 @@ namespace Luthor
                 Console.WriteLine($"Start state created with {utf16dfa.Transitions.Count} transitions. State machine has {utf16dfa.FillClosure().Count} states.");
 
                 // Test the DFA with some strings
-                foreach (var input in inputs) TestDfaUtf16(utf16dfa, input);
+                foreach (var input in inputs) TestUtf16Dfa(utf16dfa, input);
 
                 Console.WriteLine();
 
@@ -762,7 +762,11 @@ namespace Luthor
                 Console.WriteLine($"Start state created with {utf8dfa.Transitions.Count} transitions. State machine has {utf8dfa.FillClosure().Count} states. Array length is {array.Length}");
 
                 // Test the DFA with some strings
-                foreach (var input in inputs) TestDfaUtf8(utf8dfa, input);
+                foreach (var input in inputs) TestUtf8Dfa(utf8dfa, input);
+
+                Console.WriteLine();
+                Console.WriteLine("Testing over array");
+                foreach (var input in inputs) TestUtf8DfaArray(array,input);
 
             }
             catch (Exception ex)
@@ -771,7 +775,7 @@ namespace Luthor
                 Console.WriteLine(ex.StackTrace);
             }
         }
-        static void TestDfaUtf32(Dfa startState, string input)
+        static void TestUtf32Dfa(Dfa startState, string input)
         {
             var currentState = startState;
             int position = 0;
@@ -856,7 +860,7 @@ namespace Luthor
 
             Console.WriteLine($"REJECTED: Not in accept state");
         }
-        static void TestDfaUtf16(Dfa startState, string input)
+        static void TestUtf16Dfa(Dfa startState, string input)
         {
 
             var currentState = startState;
@@ -933,7 +937,116 @@ namespace Luthor
 
             Console.WriteLine($"REJECTED: Not in accept state");
         }
-        static void TestDfaUtf8(Dfa startState, string input)
+        static void TestUtf8DfaArray(int[] dfa, string input)
+        {
+            var bytes = Encoding.UTF8.GetBytes(input);
+            int currentStateIndex = 0;
+            int position = 0;
+            bool atLineStart = true;
+            bool atLineEnd = bytes.Length == 0 || (bytes.Length == 1 && bytes[0] == '\n');
+            bool isRangeArray = Dfa.IsRangeArray(dfa);
+            Console.WriteLine($"\n=== Testing '{input}' ===");
+
+            while (position <= bytes.Length)
+            {
+                bool found = false;
+
+                // Parse current state's transitions from array
+                int stateIndex = currentStateIndex;
+                int acceptId = dfa[stateIndex++];
+                int transitionCount = dfa[stateIndex++];
+
+                // Check each transition (like foreach transition in working version)
+                for (int t = 0; t < transitionCount; t++)
+                {
+                    int destStateIndex = dfa[stateIndex++];
+                    int rangeCount = dfa[stateIndex++];
+
+                    // Check if any range in this transition matches
+                    bool transitionMatches = false;
+                    for (int r = 0; r < rangeCount; r++)
+                    {
+                        int min, max;
+                        if (isRangeArray)
+                        {
+                            min = dfa[stateIndex++];
+                            max = dfa[stateIndex++];
+                        }
+                        else
+                        {
+                            min = max = dfa[stateIndex++];
+                        }
+
+                        // Check anchor transitions first (exact same logic as working version)
+                        if (min == -2 && max == -2)  // START_ANCHOR ^
+                        {
+                            if (atLineStart)
+                            {
+                                currentStateIndex = destStateIndex;
+                                atLineStart = false;
+                                found = true;
+                                transitionMatches = true;
+                                break;
+                            }
+                        }
+                        else if (min == -3 && max == -3)  // END_ANCHOR $
+                        {
+                            if (atLineEnd)
+                            {
+                                currentStateIndex = destStateIndex;
+                                found = true;
+                                transitionMatches = true;
+                                break;
+                            }
+                        }
+                        // Check character transitions (exact same logic as working version)
+                        else if (min >= 0 && position < bytes.Length)
+                        {
+                            byte c = bytes[position];
+                            if (c >= min && c <= max)
+                            {
+                                currentStateIndex = destStateIndex;
+                                position++;
+                                atLineEnd = (position == bytes.Length) || (position < bytes.Length && bytes[position] == '\n');
+                                atLineStart = (c == '\n');
+                                found = true;
+                                transitionMatches = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (transitionMatches) break; // Exit transition loop, just like working version
+                }
+
+                if (!found)
+                {
+                    if (position < bytes.Length)
+                        Console.WriteLine($"REJECTED: No transition for byte 0x{bytes[position]:X2} at position {position}");
+                    else
+                        Console.WriteLine($"REJECTED: No valid end transition");
+                    return;
+                }
+
+                // Check for acceptance (exact same logic as working version)
+                int currentAcceptId = dfa[currentStateIndex];
+                if (currentAcceptId != -1)
+                {
+                    if (position < bytes.Length - 1)
+                    {
+                        Console.WriteLine($"Rejected: Input remaining");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"ACCEPTED: {currentAcceptId}");
+                    }
+                    return;
+                }
+            }
+
+            Console.WriteLine($"REJECTED: Not in accept state");
+        }
+        static void TestUtf8Dfa(Dfa startState, string input)
         {
             var bytes = Encoding.UTF8.GetBytes(input);
             var currentState = startState;

@@ -5,7 +5,7 @@ using System.Text;
 
 namespace Luthor
 {
-    public class DfaAttributes : Dictionary<string, object>, IEquatable<DfaAttributes>
+    class DfaAttributes : Dictionary<string, object>, IEquatable<DfaAttributes>
     {
         public bool Equals(DfaAttributes? other)
         {

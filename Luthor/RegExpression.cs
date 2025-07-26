@@ -254,7 +254,7 @@ namespace Luthor
     }
     #endregion StringCursor
 
-    public enum RegexAnchorType
+    enum RegexAnchorType
     {
         LineStart = 0,
         LineEnd

@@ -25,11 +25,10 @@ static int lex_non_ranged(const char** data, const int* dfa) {
             // Check if any range in this transition matches
             bool transition_matches = false;
             for (int r = 0; r < range_count; r++) {
-                // NON-RANGE: Read single codepoint, not min/max pair
-                int min = max = dfa[machine_index++];
+                int cmp = dfa[machine_index++];
 
                 // Check anchor transitions first 
-                if (min == -2 && max == -2) { // START_ANCHOR ^
+                if (cmp == -2) { // START_ANCHOR ^
                     if (at_line_start) {
                         current_state_index = dest_state_index;
                         at_line_start = false;
@@ -38,7 +37,7 @@ static int lex_non_ranged(const char** data, const int* dfa) {
                         break;
                     }
                 }
-                else if (min == -3 && max == -3) { // END_ANCHOR $
+                else if (cmp == -3) { // END_ANCHOR $
                     if (at_line_end) {
                         current_state_index = dest_state_index;
                         found = true;
@@ -47,9 +46,16 @@ static int lex_non_ranged(const char** data, const int* dfa) {
                     }
                 }
                 // Check character transitions
-                else if (min >= 0 && *sz != '\0') {
+                else if (cmp >= 0 && *sz != '\0') {
                     int c = (unsigned char)*sz;
-                    if (c >= min && c <= max) { // Still works since min == max
+
+                    if (c < cmp) {
+                        // Early out: skip remaining ranges in this transition
+                        machine_index += (range_count - (r + 1));
+                        break;
+                    }
+
+                    if (c == cmp) { // c == min in non-ranged case
                         current_state_index = dest_state_index;
                         sz++; // Advance string pointer
                         at_line_end = (*sz == '\0') || (*sz == '\n');
@@ -81,6 +87,9 @@ static int lex_non_ranged(const char** data, const int* dfa) {
         }
     }
 
+    // ALWAYS update cursor position, even on failure
+    *data = sz;
+
     // Check final acceptance state
     int final_accept_id = dfa[current_state_index];
     if (final_accept_id != -1) {
@@ -92,7 +101,6 @@ static int lex_non_ranged(const char** data, const int* dfa) {
 }
 
 static int lex_ranged(const char** data, const int* dfa) {
-
     const char* sz = *data;
     int current_state_index = 0;
     bool at_line_start = true;
@@ -119,7 +127,7 @@ static int lex_ranged(const char** data, const int* dfa) {
                 int max = dfa[machine_index++];
 
                 // Check anchor transitions first 
-                if (min == -2 && max == -2) { // START_ANCHOR ^
+                if (min == -2) { // START_ANCHOR ^
                     if (at_line_start) {
                         current_state_index = dest_state_index;
                         at_line_start = false;
@@ -128,7 +136,7 @@ static int lex_ranged(const char** data, const int* dfa) {
                         break;
                     }
                 }
-                else if (min == -3 && max == -3) { // END_ANCHOR $
+                else if (min == -3) { // END_ANCHOR $
                     if (at_line_end) {
                         current_state_index = dest_state_index;
                         found = true;
@@ -139,6 +147,13 @@ static int lex_ranged(const char** data, const int* dfa) {
                 // Check character transitions
                 else if (min >= 0 && *sz != '\0') {
                     int c = (unsigned char)*sz;
+
+                    if (c < min) {
+                        // Early out: skip remaining ranges in this transition
+                        machine_index += ((range_count - (r + 1)) * 2);
+                        break;
+                    }
+
                     if (c >= min && c <= max) {
                         current_state_index = dest_state_index;
                         sz++; // Advance string pointer
@@ -171,10 +186,12 @@ static int lex_ranged(const char** data, const int* dfa) {
         }
     }
 
+    // ALWAYS update cursor position, even on failure
+    *data = sz;
+
     // Check final acceptance state
     int final_accept_id = dfa[current_state_index];
     if (final_accept_id != -1) {
-        *data = sz;
         return final_accept_id;
     }
 

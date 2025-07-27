@@ -12,6 +12,10 @@ There is no Thompson construction or NFA intermediary using this technique.
 
 Furthermore, this code implements lazy matching using a pure DFA algorithm pioneered by Dr. Robert van Engelen as part of his RE/FLEX project. https://github.com/Genivia/RE-flex
 
+Next the result is rencoded to the desired encoding using a range splitting algorithm I devised, but honestly I'm probably not the first to do it this way.
+
+Finally, the result is minimized using Hopcroft's algorithm before being serialized to an array.
+
 The point of this code is to provide a means to generate flat integer arrays from single regular expressions or entire lexers that can easily be traversed to match unicode text in any language.
 
 Ergo, this code does not contain matching logic, aside from the tests. That is meant for whatever uses the arrays this code can generate.

@@ -47,7 +47,7 @@ The array is simply a list of states, each of which has lists of transitions to 
 For each state:
 
 The first integer is the accept id, or -1 if not accepting.
-
+The second integer is the set of anchor flags: 1= start line anchor, 2 = end line anchor
 The next integer is the number of unique destination states this state may transition to.
 
 - For each destination state:

@@ -1831,8 +1831,6 @@ namespace Luthor
     /// </summary>
     partial class RegexAnchorExpression : RegexExpression, IEquatable<RegexAnchorExpression>
     {
-        const int START_ANCHOR = -2;   // ^
-        const int END_ANCHOR = -3;     // $
         /// <summary>
         /// Indicates whether or not this statement is a single element or not
         /// </summary>
@@ -1871,17 +1869,7 @@ namespace Luthor
                     break;
             }
         }
-        public int GetVirtualCodepoint()
-        {
-            switch (Type)
-            {
-                case RegexAnchorType.LineStart:
-                    return START_ANCHOR;
-                case RegexAnchorType.LineEnd:
-                    return END_ANCHOR;
-            }
-            return -1;
-        }
+       
         /// <summary>
         /// Creates a new copy of this expression
         /// </summary>

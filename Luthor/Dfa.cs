@@ -948,6 +948,8 @@ namespace Luthor
                 stateIndices[i] = working.Count;
                 // add the accept
                 working.Add(cfa.IsAccept ? cfa.AcceptSymbol : -1);
+                // add the anchor mask
+                working.Add((int)cfa.Attributes.GetValueOrDefault("AnchorMask", 0)); 
                 var itrgp = cfa.FillInputTransitionRangesGroupedByState();
                 // add the number of transitions
                 working.Add(itrgp.Count);
@@ -963,13 +965,23 @@ namespace Luthor
                     working.AddRange(DfaRange.ToPacked(itr.Value));
                 }
             }
+            // force the array to be even. This is how we mark it as a range array for FromArray
+            // range arrays are *always* even
+            var isPadded = false;
+            if (0 != (working.Count % 2))
+            {
+                isPadded = true;
+                working.Add(-1);
+            }
             var result = working.ToArray();
             var state = 0;
             // now fill in the state indices
-            while (state < result.Length)
+            var len = isPadded?result.Length-1: result.Length;
+            while (state < len)
             {
-                ++state;
-                var tlen = result[state++];
+                ++state;                    // Skip acceptSymbol
+                ++state;                    // Skip anchorMask (NEW!)
+                var tlen = result[state++]; // Now correctly reads transitionCount
                 for (var i = 0; i < tlen; ++i)
                 {
                     // patch the destination
@@ -999,6 +1011,8 @@ namespace Luthor
                 stateIndices[i] = working.Count;
                 // add the accept
                 working.Add(cfa.IsAccept ? cfa.AcceptSymbol : -1);
+                // add the anchor mask
+                working.Add((int)cfa.Attributes.GetValueOrDefault("AnchorMask", 0));
                 var itrgp = cfa.FillInputTransitionRangesGroupedByState();
                 // add the number of transitions
                 working.Add(itrgp.Count);
@@ -1024,15 +1038,19 @@ namespace Luthor
             }
             // force the array to be odd. This is how we mark it as a non-range array for FromArray
             // range arrays are *always* even
+            var isPadded = false;
             if (0 == (working.Count % 2))
             {
+                isPadded = true;
                 working.Add(-1);
             }
             var result = working.ToArray();
             var state = 0;
+            var len = (isPadded)?result.Length-1:result.Length;
             // now fill in the state indices
-            while (state < result.Length)
+            while (state < len)
             {
+                ++state;
                 ++state;
                 if (state >= result.Length) break;
                 var tlen = result[state++];

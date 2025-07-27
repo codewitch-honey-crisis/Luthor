@@ -773,14 +773,30 @@ namespace Luthor
             foreach (var input in inputs) TestUtf8Dfa(utf16dfa, input);
 
         }
+        static bool CheckAnchorConditions(Dfa state, bool atLineStart, bool atLineEnd)
+        {
+            if (!state.Attributes.TryGetValue("AnchorMask", out var anchorObj) || !(anchorObj is int anchorMask))
+                return true; // No anchors = always valid
+
+            const int START_ANCHOR = 1;  // ^
+            const int END_ANCHOR = 2;    // $
+
+            // Check start anchor condition
+            if ((anchorMask & START_ANCHOR) != 0 && !atLineStart)
+                return false;
+
+            // Check end anchor condition  
+            if ((anchorMask & END_ANCHOR) != 0 && !atLineEnd)
+                return false;
+
+            return true;
+        }
         static void TestUtf32Dfa(Dfa startState, string input)
         {
             var currentState = startState;
             int position = 0;
             bool atLineStart = true;
-
             Console.WriteLine($"\n=== Testing '{input}' ===");
-
             var codepoints = RegexExpression.ToUtf32(input).ToArray();
             bool atLineEnd = codepoints.Length == 0 || (codepoints.Length == 1 && codepoints[0] == '\n');
 
@@ -788,37 +804,19 @@ namespace Luthor
             {
                 bool found = false;
 
+                //  check character transitions 
                 foreach (var transition in currentState.Transitions)
                 {
-                    // Check anchor transitions first
-                    if (transition.Min == -2 && transition.Max == -2)  // START_ANCHOR ^
-                    {
-                        if (atLineStart)
-                        {
-                            currentState = transition.To;
-                            atLineStart = false;
-                            found = true;
-                            break;
-                        }
-                    }
-                    else if (transition.Min == -3 && transition.Max == -3)  // END_ANCHOR $
-                    {
-                        if (atLineEnd)
-                        {
-                            currentState = transition.To;
-                            found = true;
-                            break;
-                        }
-                    }
-                    // Check character transitions only if not an anchor
-                    else if (transition.Min >= 0 && position < codepoints.Length)
+                  
+                    if (position < codepoints.Length)
                     {
                         int codepoint = codepoints[position];
                         if (codepoint >= transition.Min && codepoint <= transition.Max)
                         {
                             currentState = transition.To;
                             position++;
-                            atLineEnd = (position == codepoints.Length) || (position < codepoints.Length && codepoints[position] == '\n');
+                            atLineEnd = (position == codepoints.Length) ||
+                                      (position < codepoints.Length && codepoints[position] == '\n');
                             atLineStart = (codepoint == '\n');
                             found = true;
                             break;
@@ -841,9 +839,16 @@ namespace Luthor
                     return;
                 }
 
-                // Check for acceptance - KEY FIX: allow 1 remaining character (trailing newline)
+                // Check for acceptance with anchor validation
                 if (currentState.IsAccept)
                 {
+                    // Validate anchor conditions if present
+                    if (!CheckAnchorConditions(currentState, atLineStart, atLineEnd))
+                    {
+                        Console.WriteLine($"REJECTED: Anchor condition not met");
+                        return;
+                    }
+
                     if (position < codepoints.Length - 1)
                     {
                         Console.WriteLine($"Rejected: Input remaining at codepoint position {position}");
@@ -855,7 +860,6 @@ namespace Luthor
                     return;
                 }
             }
-
             Console.WriteLine($"REJECTED: Not in accept state");
         }
         static void TestUtf16Dfa(Dfa startState, string input)
@@ -873,38 +877,19 @@ namespace Luthor
 
                 foreach (var transition in currentState.Transitions)
                 {
-                    // Check anchor transitions first
-                    if (transition.Min == -2 && transition.Max == -2)  // START_ANCHOR ^
-                    {
-                        if (atLineStart)
-                        {
-                            currentState = transition.To;
-                            atLineStart = false;
-                            found = true;
-                            break;  // Exit foreach, don't check other transitions
-                        }
-                    }
-                    else if (transition.Min == -3 && transition.Max == -3)  // END_ANCHOR $
-                    {
-                        if (atLineEnd)
-                        {
-                            currentState = transition.To;
-                            found = true;
-                            break;  // Exit foreach, don't check other transitions
-                        }
-                    }
-                    // Check character transitions only if not an anchor
-                    else if (transition.Min >= 0 && position < input.Length)
+                  
+                    if (position < input.Length)
                     {
                         char c = input[position];
                         if (c >= transition.Min && c <= transition.Max)
                         {
                             currentState = transition.To;
                             position++;
-                            atLineEnd = (position == input.Length) || (position < input.Length && input[position] == '\n');
+                            atLineEnd = (position == input.Length) ||
+                                      (position < input.Length && input[position] == '\n');
                             atLineStart = (c == '\n');
                             found = true;
-                            break;  // Exit foreach, don't check other transitions
+                            break;
                         }
                     }
                 }
@@ -918,12 +903,83 @@ namespace Luthor
                     return;
                 }
 
-                // Check for acceptance
+                // Check for acceptance with anchor validation
                 if (currentState.IsAccept)
                 {
+                    // Validate anchor conditions if present
+                    if (!CheckAnchorConditions(currentState, atLineStart, atLineEnd))
+                    {
+                        Console.WriteLine($"REJECTED: Anchor condition not met");
+                        return;
+                    }
+
                     if (position < input.Length - 1)
                     {
-                        Console.WriteLine($"Rejected: Input remaining");
+                        Console.WriteLine($"Rejected: Input remaining at codepoint position {position}");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"ACCEPTED: {currentState.AcceptSymbol}");
+                    }
+                    return;
+                }
+            }
+
+            Console.WriteLine($"REJECTED: Not in accept state");
+        }
+        static void TestUtf8Dfa(Dfa startState, string input)
+        {
+            var bytes = Encoding.UTF8.GetBytes(input);
+            var currentState = startState;
+            int position = 0;
+            bool atLineStart = true;
+            bool atLineEnd = bytes.Length == 0 || bytes.Length == 1 && bytes[0] == '\n';
+            Console.WriteLine($"\n=== Testing '{input}' ===");
+
+            while (position <= bytes.Length)
+            {
+                bool found = false;
+
+                foreach (var transition in currentState.Transitions)
+                {
+                    if (position < input.Length)
+                    {
+                        byte c = bytes[position];
+                        if (c >= transition.Min && c <= transition.Max)
+                        {
+                            currentState = transition.To;
+                            position++;
+                            atLineEnd = (position == bytes.Length) ||
+                                        (position < bytes.Length && bytes[position] == '\n');
+                            atLineStart = (c == '\n');
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!found)
+                {
+                    if (position < input.Length)
+                        Console.WriteLine($"REJECTED: No transition for '{input[position]}' at position {position}");
+                    else
+                        Console.WriteLine($"REJECTED: No valid end transition");
+                    return;
+                }
+
+                // Check for acceptance with anchor validation
+                if (currentState.IsAccept)
+                {
+                    // Validate anchor conditions if present
+                    if (!CheckAnchorConditions(currentState, atLineStart, atLineEnd))
+                    {
+                        Console.WriteLine($"REJECTED: Anchor condition not met");
+                        return;
+                    }
+
+                    if (position < input.Length - 1)
+                    {
+                        Console.WriteLine($"Rejected: Input remaining at codepoint position {position}");
                     }
                     else
                     {
@@ -948,13 +1004,13 @@ namespace Luthor
             while (position <= bytes.Length)
             {
                 bool found = false;
-
                 // Parse current state's transitions from array
                 int machineIndex = currentStateIndex;
                 int acceptId = dfa[machineIndex++];
+                int anchorMask = dfa[machineIndex++];  // NEW: read anchor mask
                 int transitionCount = dfa[machineIndex++];
 
-                // Check each transition (like foreach transition in working version)
+                // Check each transition (only character transitions now)
                 for (int t = 0; t < transitionCount; t++)
                 {
                     int destStateIndex = dfa[machineIndex++];
@@ -975,37 +1031,19 @@ namespace Luthor
                             min = max = dfa[machineIndex++];
                         }
 
-                        // Check anchor transitions first
-                        if (min == -2 && max == -2)  // START_ANCHOR ^
-                        {
-                            if (atLineStart)
-                            {
-                                currentStateIndex = destStateIndex;
-                                atLineStart = false;
-                                found = true;
-                                transitionMatches = true;
-                                break;
-                            }
-                        }
-                        else if (min == -3 && max == -3)  // END_ANCHOR $
-                        {
-                            if (atLineEnd)
-                            {
-                                currentStateIndex = destStateIndex;
-                                found = true;
-                                transitionMatches = true;
-                                break;
-                            }
-                        }
-                        // Check character transitions
-                        else if (min >= 0 && position < bytes.Length)
+                        // Skip any remaining anchor transitions (shouldn't exist after refactor)
+                        if (min < 0) continue;
+
+                        // Check character transitions only
+                        if (position < bytes.Length)
                         {
                             byte c = bytes[position];
                             if (c >= min && c <= max)
                             {
                                 currentStateIndex = destStateIndex;
                                 position++;
-                                atLineEnd = (position == bytes.Length) || (position < bytes.Length && bytes[position] == '\n');
+                                atLineEnd = (position == bytes.Length) ||
+                                          (position < bytes.Length && bytes[position] == '\n');
                                 atLineStart = (c == '\n');
                                 found = true;
                                 transitionMatches = true;
@@ -1013,7 +1051,6 @@ namespace Luthor
                             }
                         }
                     }
-
                     if (transitionMatches) break; // Exit transition loop
                 }
 
@@ -1026,10 +1063,19 @@ namespace Luthor
                     return;
                 }
 
-                // Check for acceptance 
+                // Check for acceptance with anchor validation
                 int currentAcceptId = dfa[currentStateIndex];
+                int currentAnchorMask = dfa[currentStateIndex + 1];  // Read anchor mask from current state
+
                 if (currentAcceptId != -1)
                 {
+                    // Validate anchor conditions if present
+                    if (!CheckAnchorConditions(currentAnchorMask, atLineStart, atLineEnd))
+                    {
+                        Console.WriteLine($"REJECTED: Anchor condition not met");
+                        return;
+                    }
+
                     if (position < bytes.Length - 1)
                     {
                         Console.WriteLine($"Rejected: Input remaining");
@@ -1041,85 +1087,25 @@ namespace Luthor
                     return;
                 }
             }
-
             Console.WriteLine($"REJECTED: Not in accept state");
         }
-        static void TestUtf8Dfa(Dfa startState, string input)
+
+        static bool CheckAnchorConditions(int anchorMask, bool atLineStart, bool atLineEnd)
         {
-            var bytes = Encoding.UTF8.GetBytes(input);
-            var currentState = startState;
-            int position = 0;
-            bool atLineStart = true;
-            bool atLineEnd = bytes.Length == 0 || bytes.Length == 1 && bytes[0] == '\n';
-            Console.WriteLine($"\n=== Testing '{input}' ===");
+            const int START_ANCHOR = 1;  // ^
+            const int END_ANCHOR = 2;    // $
 
-            while (position <= bytes.Length)
-            {
-                bool found = false;
+            // Check start anchor condition
+            if ((anchorMask & START_ANCHOR) != 0 && !atLineStart)
+                return false;
 
-                foreach (var transition in currentState.Transitions)
-                {
-                    // Check anchor transitions first
-                    if (transition.Min == -2 && transition.Max == -2)  // START_ANCHOR ^
-                    {
-                        if (atLineStart)
-                        {
-                            currentState = transition.To;
-                            atLineStart = false;
-                            found = true;
-                            break;  // Exit foreach, don't check other transitions
-                        }
-                    }
-                    else if (transition.Min == -3 && transition.Max == -3)  // END_ANCHOR $
-                    {
-                        if (atLineEnd)
-                        {
-                            currentState = transition.To;
-                            found = true;
-                            break;  // Exit foreach, don't check other transitions
-                        }
-                    }
-                    // Check character transitions only if not an anchor
-                    else if (transition.Min >= 0 && position < input.Length)
-                    {
-                        byte c = bytes[position];
-                        if (c >= transition.Min && c <= transition.Max)
-                        {
-                            currentState = transition.To;
-                            position++;
-                            atLineEnd = (position == input.Length) || (position < input.Length && input[position] == '\n');
-                            atLineStart = (c == '\n');
-                            found = true;
-                            break;  // Exit foreach, don't check other transitions
-                        }
-                    }
-                }
+            // Check end anchor condition  
+            if ((anchorMask & END_ANCHOR) != 0 && !atLineEnd)
+                return false;
 
-                if (!found)
-                {
-                    if (position < input.Length)
-                        Console.WriteLine($"REJECTED: No transition for '{input[position]}' at position {position}");
-                    else
-                        Console.WriteLine($"REJECTED: No valid end transition");
-                    return;
-                }
-
-                // Check for acceptance
-                if (currentState.IsAccept)
-                {
-                    if (position < input.Length - 1)
-                    {
-                        Console.WriteLine($"Rejected: Input remaining");
-                    }
-                    else
-                    {
-                        Console.WriteLine($"ACCEPTED: {currentState.AcceptSymbol}");
-                    }
-                    return;
-                }
-            }
-
-            Console.WriteLine($"REJECTED: Not in accept state");
+            return true;
         }
+
+        
     }
 }

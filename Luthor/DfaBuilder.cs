@@ -15,9 +15,9 @@ namespace Luthor
             // we have to expand the tree
             regexAst = RegexExpression.Parse(regexAst.ToString("x"));
             int positionCounter = 1;
-            RegexTerminatorExpression endMarker=null;
+            RegexTerminatorExpression endMarker = null;
             int[] points;
-            int[] anchorPoints;
+            
             bool isLexer = regexAst is RegexLexerExpression;
             Dictionary<int, RegexExpression> positions = new Dictionary<int, RegexExpression>();
             Dictionary<RegexExpression, HashSet<RegexExpression>> followPos =
@@ -37,26 +37,19 @@ namespace Luthor
             // Track lazy context for proper attribution
             HashSet<RegexExpression> _currentLazyContext = new HashSet<RegexExpression>();
             var p = new HashSet<int>();
-            var ap = new HashSet<int>();
             regexAst.Visit((parent, expression, childIndex, level) =>
             {
-                if (expression is RegexAnchorExpression anchor)
+                foreach (var range in expression.GetRanges())
                 {
-                    ap.Add(anchor.GetVirtualCodepoint());
-                }
-                else
-                {
-                    foreach (var range in expression.GetRanges())
+                    p.Add(0);
+                    if (range.Min == -1 || range.Max == -1) continue; // shouldn't happen.
+                    p.Add(range.Min);
+                    if (range.Max < 0x10ffff)
                     {
-                        p.Add(0);
-                        if (range.Min == -1 || range.Max == -1) continue; // shouldn't happen.
-                        p.Add(range.Min);
-                        if (range.Max < 0x10ffff)
-                        {
-                            p.Add((range.Max + 1));
-                        }
+                        p.Add((range.Max + 1));
                     }
                 }
+               
                 return true;
             });
             points = new int[p.Count];
@@ -83,7 +76,7 @@ namespace Luthor
 
             // Step 3: Assign positions to leaf nodes
             AssignPositions(augmentedAst, positions, ref positionCounter);
-            
+
             // Step 4: Compute nullable, firstpos, lastpos
             ComputeNodeProperties(augmentedAst);
             // DEBUG AFTER ComputeNodeProperties
@@ -95,7 +88,7 @@ namespace Luthor
 
             // Step 7: Apply lazy edge trimming to accepting states
             ApplyLazyEdgeTrimming(dfa, positionToLazyParent);
-           
+
             return dfa;
         }
 
@@ -121,33 +114,31 @@ namespace Luthor
                 var endMarker = new RegexTerminatorExpression();
                 endMarkerToAcceptSymbol[endMarker] = acceptSymbol;
 
-                MarkPositionsWithAcceptSymbol(rule, acceptSymbol, positionToAcceptSymbol);
-
                 var augmentedRule = new RegexConcatExpression(rule, endMarker);
-                augmentedRules.Add(augmentedRule);
 
+                // MOVE THIS LINE: Mark positions on the augmented rule, not the original
+                MarkPositionsWithAcceptSymbol(augmentedRule, acceptSymbol, positionToAcceptSymbol);
+
+                augmentedRules.Add(augmentedRule);
                 acceptSymbol++;
             }
 
-            // Return new lexer with augmented rules
-            var augmentedLexer = new RegexLexerExpression(augmentedRules);
-            // Copy any other properties if needed
-            return augmentedLexer;
+            return new RegexLexerExpression(augmentedRules);
         }
-
-
         // Mark all positions in a subtree with the given accept symbol
         private static void MarkPositionsWithAcceptSymbol(RegexExpression expr, int acceptSymbol, Dictionary<RegexExpression, int> positionToAcceptSymbol)
         {
             expr.Visit((parent, node, childIndex, level) =>
             {
-                if (node.IsLeaf)
+                if (node.IsLeaf)  // This includes both character positions AND anchor positions
                 {
                     positionToAcceptSymbol[node] = acceptSymbol;
                 }
                 return true;
             });
         }
+
+        
 
         // Van Engelen: "mark downstream regex positions in the DFA states as lazy when a parent position is lazy"
         private static void MarkLazyPositionsWithContext(RegexExpression ast, bool inLazyContext, Dictionary<RegexExpression, RegexRepeatExpression> positionToLazyParent, Dictionary<RegexExpression, bool> lazyPositions)
@@ -230,7 +221,7 @@ namespace Luthor
             }
         }
 
-        
+
         private static void ComputeNodeProperties(RegexExpression node)
         {
             if (node == null) return;
@@ -295,7 +286,7 @@ namespace Luthor
                         node.GetLastPos().UnionWith(child.GetLastPos());
                     }
 
-                   
+
                     break;
                 case RegexRepeatExpression repeat:
                     ComputeNodeProperties(repeat.Expression);
@@ -350,7 +341,7 @@ namespace Luthor
         private static void ComputeFollowPosRecursive(RegexExpression node, Dictionary<RegexExpression, HashSet<RegexExpression>> _followPos)
         {
             if (node == null) return;
-            
+
             switch (node)
             {
                 case RegexLexerExpression lexerExpr:  // ADD THIS CASE
@@ -366,7 +357,7 @@ namespace Luthor
                         // Debug output
                         //var leftLast = string.Join(",", concat.Left.GetLastPos().Select(p => p.GetDfaPosition()));
                         //var rightFirst = string.Join(",", concat.Right.GetFirstPos().Select(p => p.GetDfaPosition()));
-                        
+
                         foreach (var pos in concat.Left.GetLastPos())
                         {
                             if (_followPos.ContainsKey(pos))
@@ -386,13 +377,13 @@ namespace Luthor
                     // by including both branches in firstpos/lastpos
                     ComputeFollowPosRecursive(or.Left, _followPos);
                     ComputeFollowPosRecursive(or.Right, _followPos);
-                    
+
                     break;
 
                 case RegexRepeatExpression repeat:
                     if (repeat.Expression != null && !repeat.Expression.IsEmptyElement)
                     {
-                        
+
                         bool canRepeat = (repeat.MinOccurs == -1 || repeat.MinOccurs == 0) ||
                                         (repeat.MinOccurs == 1 && (repeat.MaxOccurs == -1 || repeat.MaxOccurs == 0)) ||
                                         (repeat.MaxOccurs > 1 || repeat.MaxOccurs == -1);
@@ -437,13 +428,13 @@ namespace Luthor
         {
             var startPositions = root.GetFirstPos();
             var startLazyPositions = GetLazyPositions(startPositions, lazyPositions);
-            
+
             var unmarkedStates = new Queue<Dfa>();
             var allStates = new Dictionary<DfaAttributes, Dfa>();
 
             var startState = CreateStateFromPositions(startPositions, startLazyPositions, endMarkerToAcceptSymbol, positionToAcceptSymbol);
-            allStates[startState.Attributes] = startState; 
-            
+            allStates[startState.Attributes] = startState;
+
             unmarkedStates.Enqueue(startState);
 
             while (unmarkedStates.Count > 0)
@@ -451,26 +442,18 @@ namespace Luthor
                 var currentState = unmarkedStates.Dequeue();
                 var currentPositions = GetPositionsFromState(currentState);
                 var currentLazyPositions = GetLazyPositionsFromState(currentState);
-              // Group positions by character ranges for transition construction
+                // Group positions by character ranges for transition construction
                 var transitionMap = new Dictionary<DfaRange, HashSet<RegexExpression>>();
                 foreach (var pos in currentPositions)
                 {
                     // Skip all end markers
                     if (pos is RegexTerminatorExpression) continue;
 
-                    // Handle anchor positions - add them as single-codepoint ranges
+                    // Handle anchor positions elsewhere
                     if (pos is RegexAnchorExpression anchor)
                     {
-                        var virtualCodepoint = anchor.GetVirtualCodepoint();
-                        var anchorRange = new DfaRange(virtualCodepoint, virtualCodepoint);
-                        if (!transitionMap.TryGetValue(anchorRange, out var anchorSet))
-                        {
-                            anchorSet = new HashSet<RegexExpression>();
-                            transitionMap.Add(anchorRange, anchorSet);
-                        }
-                        anchorSet.Add(pos);
                         continue;
-                        
+
                     }
 
                     // Handle character ranges (existing code for non-anchors)
@@ -491,11 +474,11 @@ namespace Luthor
                         }
                     }
                 }
-                
+
                 // Create transitions for each character range
                 foreach (var transition in transitionMap)
                 {
-                    
+
                     var range = transition.Key;
                     var positions = transition.Value;
 
@@ -508,8 +491,18 @@ namespace Luthor
                         }
                     }
 
+                    // NEW: Handle anchors as immediate epsilon moves
+                    var anchorsToProcess = nextPositions.Where(p => p is RegexAnchorExpression).ToList();
+                    foreach (var anchor in anchorsToProcess)
+                    {
+                        if (followPos.ContainsKey(anchor))
+                        {
+                            nextPositions.UnionWith(followPos[anchor]); // Include positions after anchor
+                        }
+                    }
+
                     var nextPosStr = string.Join(",", nextPositions.Select(p => p.GetDfaPosition()));
-                    
+
                     if (nextPositions.Count == 0) continue;
 
 
@@ -527,19 +520,18 @@ namespace Luthor
                     // Find existing state with same attributes, or use the new one
                     var existingState = allStates.Values.FirstOrDefault(s => {
                         bool areEqual = s.Attributes.Equals(candidateState.Attributes);
+                        
                         return areEqual;
                     });
 
                     if (existingState == null)
                     {
-                        // No existing state with these attributes - use the new one
                         nextState = candidateState;
                         allStates[candidateState.Attributes] = nextState;
                         unmarkedStates.Enqueue(nextState);
                     }
                     else
                     {
-                        // Found existing state with same attributes - reuse it
                         nextState = existingState;
                     }
 
@@ -696,30 +688,72 @@ namespace Luthor
             return false;
         }
 
-        // Updated to handle multiple end markers and accept symbols
         private static Dfa CreateStateFromPositions(
-            HashSet<RegexExpression> positions,
-            HashSet<RegexExpression> lazyPositions,
-            Dictionary<RegexTerminatorExpression, int> endMarkerToAcceptSymbol,
-            Dictionary<RegexExpression, int> positionToAcceptSymbol)
+     HashSet<RegexExpression> positions,
+     HashSet<RegexExpression> lazyPositions,
+     Dictionary<RegexTerminatorExpression, int> endMarkerToAcceptSymbol,
+     Dictionary<RegexExpression, int> positionToAcceptSymbol)
         {
             var state = new Dfa();
+            // Compute anchor mask from positions
+            int anchorMask = 0;
+            const int START_ANCHOR = 1;  // ^
+            const int END_ANCHOR = 2;    // $
 
-            // Check if this state contains any end markers (accepting state)
+            bool hasAnchors = false;
+            foreach (var pos in positions)
+            {
+                if (pos is RegexAnchorExpression anchor)
+                {
+                    hasAnchors = true;
+                    // Use anchor type instead of virtual codepoint
+                    switch (anchor.Type) // or whatever property identifies the anchor type
+                    {
+                        case RegexAnchorType.LineStart: // or similar enum value
+                            anchorMask |= START_ANCHOR;
+                            break;
+                        case RegexAnchorType.LineEnd:
+                            anchorMask |= END_ANCHOR;
+                            break;
+                    }
+                }
+            }
+
+            if (anchorMask != 0)
+            {
+                state.Attributes["AnchorMask"] = anchorMask;
+            }
+
+            // Check for acceptance - both end markers AND anchor positions can make a state accepting
             int? acceptSymbol = null;
-            var endMarkersFound = new List<(RegexTerminatorExpression, int)>();
 
+            // First check for end markers (traditional acceptance)
             foreach (var pos in positions)
             {
                 if (pos is RegexTerminatorExpression endMarker && endMarkerToAcceptSymbol.ContainsKey(endMarker))
                 {
                     int currentAcceptSymbol = endMarkerToAcceptSymbol[endMarker];
-                    endMarkersFound.Add((endMarker, currentAcceptSymbol));
-
-                    // Use the lowest accept symbol (highest precedence) if multiple end markers are present
                     if (!acceptSymbol.HasValue || currentAcceptSymbol < acceptSymbol.Value)
                     {
                         acceptSymbol = currentAcceptSymbol;
+                    }
+                }
+            }
+
+            // NEW: If no end marker but we have anchors, check if any anchor position should make this accepting
+            if (!acceptSymbol.HasValue && hasAnchors)
+            {
+                // For patterns like //.*$, the anchor position should be accepting
+                // Check if any of our anchor positions should trigger acceptance
+                foreach (var pos in positions)
+                {
+                    if (pos is RegexAnchorExpression && positionToAcceptSymbol.ContainsKey(pos))
+                    {
+                        int currentAcceptSymbol = positionToAcceptSymbol[pos];
+                        if (!acceptSymbol.HasValue || currentAcceptSymbol < acceptSymbol.Value)
+                        {
+                            acceptSymbol = currentAcceptSymbol;
+                        }
                     }
                 }
             }
@@ -728,7 +762,6 @@ namespace Luthor
             if (acceptSymbol.HasValue)
             {
                 state.Attributes["AcceptSymbol"] = acceptSymbol.Value;
-
             }
 
             state.Attributes["Positions"] = positions.ToList();

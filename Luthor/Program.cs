@@ -116,12 +116,15 @@ static class Program
             }
             Console.Error.WriteLine();
             var array = dfa.ToArray();
+            var width = GetArrayWidth(array);
+            var label = (width!=1)?"bytes":"byte";
+            
             if (Dfa.IsRangeArray(array))
             {
-                Console.Error.WriteLine($"Emitting ranged jump table array with an element width of {GetArrayWidth(array)}");
+                Console.Error.WriteLine($"Emitting ranged jump table array with a size of {array.Length} and an element width of {width} {label}");
             } else
             {
-                Console.Error.WriteLine($"Emitting non-ranged jump table array with an element width of {GetArrayWidth(array)}");
+                Console.Error.WriteLine($"Emitting non-ranged jump table array with a size of {array.Length} and an element width of {width} {label}");
             }
             Console.Error.WriteLine();
             PrintArray(array);

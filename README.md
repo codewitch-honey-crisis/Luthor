@@ -87,12 +87,20 @@ Example for `dotnet luthor [A-Z_a-z][A-Z_a-z0-9]*`
 Processing the following input:
 [A-Z_a-z][A-Z_a-z0-9]*
 
-Transforming to UTF-8
+Created initial machine with 2 states.
+Minimizing...done! 0% size savings.
+Minimized machine has 2 states.
+Transforming to UTF-8...done! 0% larger than minimized.
+Net effect: 100% of original length*.
 
-Emitting ranged jump table array:
+The array takes a minimum of 24 bytes to store
 
--1, 1, 10, 3, 65, 90, 95, 95, 97, 122, 0, 1, 10, 4, 48, 57, 65, 90, 95, 95,
-97, 122
+Emitting ranged jump table array with a length of 24 and an element width of 1 byte
+
+* values do not reflect the relative width of the elements, only the total length of the array.
+
+-1, 0, 1, 11, 3, 65, 90, 95, 95, 97, 122, 0, 0, 1, 11, 4, 48, 57, 65, 90,
+95, 95, 97, 122
 ```
 
 Those integers are your magic sauce. In the language of your choice, wrap them in the syntax for an integer array. You then create simple matching code for it like so (example lexer in C)

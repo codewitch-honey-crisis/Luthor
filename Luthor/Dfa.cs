@@ -450,6 +450,36 @@ namespace Luthor
                 return -1;
             }
         }
+        public static int GetFirstAcceptSymbol(IEnumerable<Dfa> states)
+        {
+            if (states == null) return -1;
+            foreach (var state in states)
+            {
+                int acc = state.AcceptSymbol;
+                if (acc!=-1)
+                {
+                    return acc;
+                }
+            }
+            return -1;
+        }
+        static bool _FsmHasAnyVirtualCharTransitionsOrAcceptingStates(IEnumerable<Dfa> states)
+        {
+            if (states == null) return false;
+            foreach (var state in states)
+            {
+                
+                if (state.IsAccept)
+                {
+                    return true;
+                }
+                foreach(var fat in state._transitions)
+                {
+                    if (fat.Min < -1) return true;
+                }
+            }
+            return false;
+        }
         public void RemoveTransition(DfaTransition trn)
         {
             _transitions.Remove(trn);

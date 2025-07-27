@@ -4,7 +4,6 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Text;
 using Luthor;
-using System.Text.Unicode;
 public class EncodingConverter : TypeConverter
 {
     public override object? ConvertFrom(ITypeDescriptorContext? context, CultureInfo? culture, object value)
@@ -63,11 +62,11 @@ static class Program
     static void Main(string[] args)
     {
         // if you use the DFAS in this code the order must be
-        //       RegexExpression
-        //         ->ToDfa()                    // Unicode codepoint DFA
-        //         ->RenderToFile()            // Visualize human-readable version  
-        //         ->UTF8 / UTF16 transformation // Split ranges, add intermediate states
-        //         ->ToMinimized()             // Optimize the transformed structure
+        //       RegexExpression->ToDfa()       // Unicode codepoint DFA
+        //         Dfa
+        //          ->RenderToFile()            // Visualize human-readable version  
+        //          ->UTF8 / UTF16 transformation // Split ranges, add intermediate states
+        //          ->ToMinimized()             // Optimize the transformed structure
         using (var allArgs = CliUtility.ParseAndSet(args, null, typeof(Program), 0, null, "--"))
         {
             if(Help)

@@ -8,9 +8,17 @@
       "commandName": "Project",
       "commandLineArgs": "[A-Z_a-z][A-Z_a-z0-9]*"
     },
-    "Line Comment": {
+    "Demo.lex": {
+      "commandName": "Project",
+      "commandLineArgs": "..\\..\\..\\demo.lex"
+    },
+    "Block Comment": {
       "commandName": "Project",
       "commandLineArgs": "/\\*(.|\\n)*?\\*/"
+    },
+    "Line Comment": {
+      "commandName": "Project",
+      "commandLineArgs": "//.*$"
     }
   }
 }

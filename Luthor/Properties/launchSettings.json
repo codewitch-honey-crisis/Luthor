@@ -19,6 +19,10 @@
     "Line Comment": {
       "commandName": "Project",
       "commandLineArgs": "//.*$"
+    },
+    "Testing": {
+      "commandName": "Project",
+      "commandLineArgs": "//.*$"
     }
   }
 }

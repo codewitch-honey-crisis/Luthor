@@ -402,7 +402,7 @@ namespace Luthor
 
     internal partial class Dfa
     {
-
+        internal int _MinimizationTag { get; set; } = -1;
         public IList<Dfa> FillClosure(IList<Dfa> result = null)
         {
             if (null == result) result = new List<Dfa>();

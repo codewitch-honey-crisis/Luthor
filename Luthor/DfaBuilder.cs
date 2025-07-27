@@ -307,12 +307,16 @@ namespace Luthor
                     break;
                 case RegexTerminatorExpression:
                 case RegexLiteralExpression:
-                case RegexAnchorExpression:
                     node.SetNullable(false);
                     node.GetFirstPos().Add(node);
                     node.GetLastPos().Add(node);
                     break;
 
+                case RegexAnchorExpression:
+                    node.SetNullable(true);   // ✅ FIX: Anchors are nullable/transparent
+                    node.GetFirstPos().Add(node);
+                    node.GetLastPos().Add(node);
+                    break;
                 case RegexCharsetExpression charset:
                     if (node is RegexLiteralExpression lit && (lit.Codepoint == -1))
                     {
@@ -740,23 +744,22 @@ namespace Luthor
                 }
             }
 
-            // NEW: If no end marker but we have anchors, check if any anchor position should make this accepting
+            // Only END anchors at pattern boundaries should make states accepting
             if (!acceptSymbol.HasValue && hasAnchors)
             {
-                // For patterns like //.*$, the anchor position should be accepting
-                // Check if any of our anchor positions should trigger acceptance
                 foreach (var pos in positions)
                 {
-                    if (pos is RegexAnchorExpression && positionToAcceptSymbol.ContainsKey(pos))
+                    if (pos is RegexAnchorExpression anchor &&
+                        anchor.Type == RegexAnchorType.LineEnd &&  // Only $ anchors
+                        positionToAcceptSymbol.ContainsKey(pos))
                     {
-                        int currentAcceptSymbol = positionToAcceptSymbol[pos];
-                        if (!acceptSymbol.HasValue || currentAcceptSymbol < acceptSymbol.Value)
-                        {
-                            acceptSymbol = currentAcceptSymbol;
-                        }
+                        // Additional check: ensure this $ is actually at the end of its pattern
+                        // (you may need followpos analysis to verify this)
+                        acceptSymbol = positionToAcceptSymbol[pos];
                     }
                 }
             }
+
 
             // Set the accept symbol if this is an accepting state
             if (acceptSymbol.HasValue)

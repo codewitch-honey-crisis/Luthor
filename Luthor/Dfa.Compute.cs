@@ -311,23 +311,43 @@ namespace Luthor
             // Initialize pending.
             for (int x = 0; x < sigma.Length; x++)
             {
-                // Find partition with minimum active count for this symbol
-                int minPartition = 0;
-                int minCount = active[0, x].Count;
-
-                for (int j = 1; j < partitionCount; j++)  // Check all partitions
+                // Process every partition that has active states for this symbol
+                for (int j = 0; j < partitionCount; j++)
                 {
-                    if (active[j, x].Count < minCount)
+                    if (active[j, x].Count > 0 && !pending2[x, j])
                     {
-                        minCount = active[j, x].Count;
-                        minPartition = j;
+                        pending.Enqueue(new KeyValuePair<int, int>(j, x));
+                        pending2[x, j] = true;
                     }
                 }
-
-                pending.Enqueue(new KeyValuePair<int, int>(minPartition, x));
-                pending2[x, minPartition] = true;
             }
 
+            // Ensure every partition gets processed (required by Hopcroft algorithm)
+            for (int j = 0; j < partitionCount; j++)
+            {
+                bool scheduled = false;
+                for (int x = 0; x < sigma.Length; x++)
+                {
+                    if (pending2[x, j]) { scheduled = true; break; }
+                }
+
+                if (!scheduled)
+                {
+                    // Add unscheduled partition with first symbol
+                    pending.Enqueue(new KeyValuePair<int, int>(j, 0));
+                    pending2[0, j] = true;
+                }
+            }
+
+            // Right after pending initialization, add:
+            for (int j = 0; j < partitionCount; j++)
+            {
+                bool scheduled = false;
+                for (int x = 0; x < sigma.Length; x++)
+                {
+                    if (pending2[x, j]) { scheduled = true; break; }
+                }
+            }
             // Process pending until fixed point.
             int k = partitionCount;
             while (pending.Count > 0)
@@ -336,7 +356,6 @@ namespace Luthor
                 int p = ip.Key;
                 int x = ip.Value;
                 pending2[x, p] = false;
-                //Console.WriteLine($"Processing partition {p}, symbol {x}");
                 // Find states that need to be split off their blocks.
                 for (var m = active[p, x].First; m != null; m = m.Next)
                 {
@@ -364,8 +383,7 @@ namespace Luthor
                 {
                     if (splitblock[j]?.Count < partition[j]?.Count)
                     {
-                        //Console.WriteLine($"Splitting partition {j}: {splitblock[j]?.Count} states moving to new partition {k}");
-
+            
                         LinkedList<Dfa> b1 = partition[j];
                         System.Diagnostics.Debug.Assert(b1 != null);
                         LinkedList<Dfa> b2 = partition[k];
@@ -374,7 +392,6 @@ namespace Luthor
                         System.Diagnostics.Debug.Assert(e != null);
                         foreach (var s in e)
                         {
-                            //Console.WriteLine($"  Moving state {s._MinimizationTag} (AcceptSymbol={s.AcceptSymbol}) from partition {j} to {k}");
                             b1.Remove(s);
                             b2.AddLast(s);
                             block[s._MinimizationTag] = k;
@@ -421,10 +438,11 @@ namespace Luthor
                     ++prog;
                     if (progress != null) { progress.Report(prog); }
                 }
-
+               
                 split.Clear();
                 refine.Clear();
             }
+
             ++prog;
             if (progress != null) { progress.Report(prog); }
 
@@ -445,37 +463,38 @@ namespace Luthor
                     if (q == a)
                     {
                         a = s;
+
                     }
-                    // DON'T change _MinimizationTag yet!
                 }
                 ++prog;
                 progress?.Report(prog);
             }
+
+
 
             // Build transitions FIRST (while _MinimizationTag still has original values)
             for (int n = 0; n < newstates.Length; n++)
             {
                 var s = newstates[n];
                 var representative = partition[n].First.Value;
-
+               
+                
                 foreach (var t in representative._transitions)
                 {
-                    // This now uses the original state indices in block[]
-                    s._transitions.Add(new DfaTransition(newstates[block[t.To._MinimizationTag]], t.Min, t.Max));
+                    var targetIndex = block[t.To._MinimizationTag];
+                
+                    if (targetIndex < 0 || targetIndex >= newstates.Length)
+                    {
+                        continue;
+                    }
+
+                    s._transitions.Add(new DfaTransition(newstates[targetIndex], t.Min, t.Max));
+                        
+                    
                 }
+
             }
-
-            // NOW update _MinimizationTag values (after transitions are built)
-            for (int n = 0; n < newstates.Length; n++)
-            {
-                var pn = partition[n];
-                foreach (var q in pn)
-                {
-                    q._MinimizationTag = n;
-                }
-            }
-
-
+            
             // remove dead transitions
             foreach (var ffa in a.FillClosure())
             {

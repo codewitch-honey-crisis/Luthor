@@ -103,19 +103,37 @@ static class Program
             Console.Error.WriteLine();
             var expr = RegexExpression.Parse(Input!);
             var dfa = expr!.ToDfa();
+            Console.Error.WriteLine($"Created initial machine with {dfa.FillClosure().Count} states.");
+            var len = dfa.GetArrayLength();
+            Console.Error.Write("Minimizing...");
             dfa = dfa.ToMinimized();
+            var mlen = dfa.GetArrayLength();
+            Console.Error.WriteLine($"done! {100-(mlen * 100 / len)}% size savings.");
+            Console.Error.WriteLine($"Minimized machine has {dfa.FillClosure().Count} states.");
             //dfa.RenderToFile(@"..\..\..\dfa.jpg");
-            if (Enc== Encoding.UTF8)
+            var xformed = false;
+            if (Enc == Encoding.UTF8)
             {
-                Console.Error.WriteLine("Transforming to UTF-8");
+                Console.Error.Write("Transforming to UTF-8...");
                 dfa = DfaUtf8Transformer.TransformToUtf8(dfa);
-            } else if(Enc==Encoding.Unicode)
+                xformed = true;
+            }
+            else if (Enc == Encoding.Unicode)
             {
-                Console.Error.WriteLine("Transforming to UTF-16");
+                Console.Error.Write("Transforming to UTF-16...");
                 dfa = DfaUtf16Transformer.TransformToUtf16(dfa);
+                xformed = true;
+            }
+            if (xformed)
+            {
+                var tlen = dfa.GetArrayLength();
+                Console.Error.WriteLine($"done! {(tlen * 100 / len)- (mlen * 100 / len)}% expansion cost.");
+                Console.Error.WriteLine($"Transfoemd machine has {dfa.FillClosure().Count} states.");
+
             }
             Console.Error.WriteLine();
             var array = dfa.ToArray();
+
             var width = GetArrayWidth(array);
             var label = (width!=1)?"bytes":"byte";
             

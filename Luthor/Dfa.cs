@@ -1036,6 +1036,7 @@ namespace Luthor
                     working.AddRange(codepoints);
                 }
             }
+
             // force the array to be odd. This is how we mark it as a non-range array for FromArray
             // range arrays are *always* even
             var isPadded = false;
@@ -1066,19 +1067,117 @@ namespace Luthor
             
             return result;
         }
+        /// <summary>
+        /// Gets the legnth of a a packed state table as a series of integers
+        /// </summary>
+        /// <returns>The size of the integer array representing the machine</returns>
+        public int GetNonRangeArrayLength()
+        {
+            int count = 0;
+            var closure = new List<Dfa>();
+            FillClosure(closure);
+            // fill in the state information
+            for (var i = 0; i < closure.Count; ++i)
+            {
+                var cfa = closure[i];
+                // add the accept
+                ++count;
+                // add the anchor mask
+                ++count;
+                var itrgp = cfa.FillInputTransitionRangesGroupedByState();
+                // add the number of transitions
+                ++count;
+                foreach (var itr in itrgp)
+                {
+                    // We have to fill in the following after the fact
+                    // We don't have enough info here
+                    // for now just drop the state index as a placeholder
+                    ++count;
+                    // add the number of codepoints
+                    // add the codepoints
+                    int cpcount = 0;
+
+                    foreach (var range in itr.Value)
+                    {
+                        cpcount += range.Max - range.Min + 1;
+                    }
+                    ++count;
+                    count += cpcount;
+                }
+            }
+            // force the array to be odd. This is how we mark it as a non-range array for FromArray
+            // range arrays are *always* even
+            if (0 == (count % 2))
+            {
+                ++count;
+            }
+            return count;
+        }
+        /// <summary>
+        /// Gets the legnth of an array a packed state table as a series of integers
+        /// </summary>
+        /// <returns>The size of the integer array representing the machine</returns>
+        public int GetRangeArrayLength()
+        {
+            int count = 0;
+            var closure = new List<Dfa>();
+            FillClosure(closure);
+            // fill in the state information
+            for (var i = 0; i < closure.Count; ++i)
+            {
+                var cfa = closure[i];
+                // add the accept
+                ++count;
+                // add the anchor mask
+                ++count;
+                var itrgp = cfa.FillInputTransitionRangesGroupedByState();
+                // add the number of transitions
+                ++count;
+                foreach (var itr in itrgp)
+                {
+                    // We have to fill in the following after the fact
+                    // We don't have enough info here
+                    // for now just drop the state index as a placeholder
+                    ++count;
+                    // add the number of packed ranges
+                    // add the packed ranges
+                    count += 2 * itr.Value.Count;
+                    ++count;
+                }
+            }
+            // force the array to be even. This is how we mark it as a range array for FromArray
+            // range arrays are *always* even
+            if (0 != (count % 2))
+            {
+                ++count;
+            }
+            return count;
+        }
+        /// <summary>
+        /// Gets the legnth of an array a packed state table as a series of integers
+        /// </summary>
+        /// <returns>The size of the integer array representing the machine</returns>
+        public int GetArrayLength()
+        {
+            var ranged = GetRangeArrayLength();
+            var nonRanged = GetNonRangeArrayLength();
+            if(ranged<nonRanged)
+            {
+                return ranged;
+            }
+            return nonRanged;
+        }
         public static bool IsRangeArray(int[] fa)
         {
             return fa.Length % 2 == 0;
         }
         public int[] ToArray()
         {
-            var rangeArray = ToRangeArray();
-            var nonRangeArray = ToNonRangeArray();
-            if(rangeArray.Length<nonRangeArray.Length)
+            if(GetRangeArrayLength()<GetNonRangeArrayLength())
             {
-                return rangeArray;
+                return ToRangeArray();
             }
-            return nonRangeArray;
+            return ToNonRangeArray();
         }
         public static Dfa FromArray(int[] fa)
         {

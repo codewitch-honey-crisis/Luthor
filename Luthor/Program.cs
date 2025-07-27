@@ -84,7 +84,7 @@ static class Program
             var expr = RegexExpression.Parse(Input!);
             var dfa = expr!.ToDfa();
             dfa = dfa.ToMinimized();
-            dfa.RenderToFile(@"..\..\..\dfa.jpg");
+            //dfa.RenderToFile(@"..\..\..\dfa.jpg");
             if (Enc== Encoding.UTF8)
             {
                 Console.Error.WriteLine("Transforming to UTF-8");

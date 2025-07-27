@@ -8,58 +8,44 @@ namespace Luthor
 {
     static class RegexExpressionExtensions
     {
-        private static Dictionary<RegexExpression, int> _positions = new Dictionary<RegexExpression, int>();
-        private static Dictionary<RegexExpression, bool> _nullable = new Dictionary<RegexExpression, bool>();
-        private static Dictionary<RegexExpression, HashSet<RegexExpression>> _firstPos = new Dictionary<RegexExpression, HashSet<RegexExpression>>();
-        private static Dictionary<RegexExpression, HashSet<RegexExpression>> _lastPos = new Dictionary<RegexExpression, HashSet<RegexExpression>>();
-
-        public static int GetDfaPosition(this RegexExpression expr)
+        public static int GetDfaPosition(this RegexExpression expr, Dictionary<RegexExpression, int> positions)
         {
-            return _positions.TryGetValue(expr, out int pos) ? pos : -1;
+            return positions.TryGetValue(expr, out int pos) ? pos : -1;
         }
 
-        public static void SetDfaPosition(this RegexExpression expr, int position)
+        public static void SetDfaPosition(this RegexExpression expr, int position, Dictionary<RegexExpression, int> positions)
         {
-            _positions[expr] = position;
+            positions[expr] = position;
         }
 
-        public static bool GetNullable(this RegexExpression expr)
+        public static bool GetNullable(this RegexExpression expr, Dictionary<RegexExpression, bool> nullable)
         {
-            return _nullable.TryGetValue(expr, out bool nullable) && nullable;
+            return nullable.TryGetValue(expr, out bool result) && result;
         }
 
-        public static void SetNullable(this RegexExpression expr, bool nullable)
+        public static void SetNullable(this RegexExpression expr, bool nullableValue, Dictionary<RegexExpression, bool> nullable)
         {
-            _nullable[expr] = nullable;
+            nullable[expr] = nullableValue;
         }
 
-        public static HashSet<RegexExpression> GetFirstPos(this RegexExpression expr)
+        public static HashSet<RegexExpression> GetFirstPos(this RegexExpression expr, Dictionary<RegexExpression, HashSet<RegexExpression>> firstPos)
         {
-            if (!_firstPos.TryGetValue(expr, out HashSet<RegexExpression> set))
+            if (!firstPos.TryGetValue(expr, out HashSet<RegexExpression> set))
             {
                 set = new HashSet<RegexExpression>();
-                _firstPos[expr] = set;
+                firstPos[expr] = set;
             }
             return set;
         }
 
-        public static HashSet<RegexExpression> GetLastPos(this RegexExpression expr)
+        public static HashSet<RegexExpression> GetLastPos(this RegexExpression expr, Dictionary<RegexExpression, HashSet<RegexExpression>> lastPos)
         {
-            if (!_lastPos.TryGetValue(expr, out HashSet<RegexExpression> set))
+            if (!lastPos.TryGetValue(expr, out HashSet<RegexExpression> set))
             {
                 set = new HashSet<RegexExpression>();
-                _lastPos[expr] = set;
+                lastPos[expr] = set;
             }
             return set;
-        }
-
-        public static void ClearDfaProperties()
-        {
-            _positions.Clear();
-            _nullable.Clear();
-            _firstPos.Clear();
-            _lastPos.Clear();
         }
     }
-
 }

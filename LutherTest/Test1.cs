@@ -21,6 +21,17 @@ namespace LutherTest
             Assert.IsTrue(found, "The item was not found in the collection");
         }
         [TestMethod]
+        public void TestAst()
+        {
+            var ccommentLazy = @"/\*(.|\n)*?\*/";
+            var test1 = "(?<baz>foo|fubar)+";
+            var test2 = "(a|b)*?(b{2})";
+            var test3 = "^hello world!$";
+            var lexer = $"# Test Lexer\n{test1}\n# C block comment\n{ccommentLazy}\n{test2}\n{test3}";
+            var ast = RegexExpression.Parse(lexer)!;
+            Console.WriteLine(ast.ToString());
+        }
+        [TestMethod]
         public void MainTests()
         {
             (string Text, int Expected)[] inputs =
@@ -47,17 +58,7 @@ namespace LutherTest
             var dfa = ast.ToDfa();
             Assert.IsNotNull(dfa);
 
-            Console.WriteLine("=== ORIGINAL DFA TRANSITION TRACE ===");
-            Console.WriteLine("From start state, 'a' transition leads to:");
-            foreach (var t in dfa.Transitions)
-            {
-                if (t.Min <= 97 && t.Max >= 97) // 'a' = 97
-                {
-                    Console.WriteLine($"  Target state AcceptSymbol: {t.To.AcceptSymbol}");
-                    Console.WriteLine($"  Target state can reach accepting states: {t.To.FillClosure().Any(s => s.AcceptSymbol != -1)}");
-                    break;
-                }
-            }
+
 
             Console.WriteLine($"Start state created with {dfa.Transitions.Count} transitions. State machine has {dfa.FillClosure().Count} states.");
             // Test the DFA with some strings

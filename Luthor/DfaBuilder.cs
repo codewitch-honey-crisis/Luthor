@@ -17,7 +17,13 @@ namespace Luthor
             int positionCounter = 1;
             RegexTerminatorExpression endMarker = null;
             int[] points;
-            
+
+            // Create thread-local dictionaries instead of static fields
+            var positionMap = new Dictionary<RegexExpression, int>();
+            var nullableMap = new Dictionary<RegexExpression, bool>();
+            var firstPosMap = new Dictionary<RegexExpression, HashSet<RegexExpression>>();
+            var lastPosMap = new Dictionary<RegexExpression, HashSet<RegexExpression>>();
+
             bool isLexer = regexAst is RegexLexerExpression;
             Dictionary<int, RegexExpression> positions = new Dictionary<int, RegexExpression>();
             Dictionary<RegexExpression, HashSet<RegexExpression>> followPos =
@@ -49,15 +55,12 @@ namespace Luthor
                         p.Add((range.Max + 1));
                     }
                 }
-               
+
                 return true;
             });
             points = new int[p.Count];
             p.CopyTo(points, 0);
             Array.Sort(points);
-
-            // Clear any previous state
-            RegexExpressionExtensions.ClearDfaProperties();
 
             positionCounter = 1;
 
@@ -75,19 +78,19 @@ namespace Luthor
             }
 
             // Step 3: Assign positions to leaf nodes
-            AssignPositions(augmentedAst, positions, ref positionCounter);
+            AssignPositions(augmentedAst, positions, ref positionCounter, positionMap);
 
             // Step 4: Compute nullable, firstpos, lastpos
-            ComputeNodeProperties(augmentedAst);
-            // DEBUG AFTER ComputeNodeProperties
+            ComputeNodeProperties(augmentedAst, nullableMap, firstPosMap, lastPosMap, positionMap);
+
             // Step 5: Compute followpos with proper disjunction handling
-            ComputeFollowPos(augmentedAst, positions, followPos);
+            ComputeFollowPos(augmentedAst, positions, followPos, lastPosMap, firstPosMap, positionMap);
 
             // Step 6: Build DFA with lazy attribution and contagion
-            var dfa = ConstructLazyDfa(augmentedAst, points, lazyPositions, endMarkerToAcceptSymbol, followPos, isLexer, positionToAcceptSymbol);
+            var dfa = ConstructLazyDfa(augmentedAst, points, lazyPositions, endMarkerToAcceptSymbol, followPos, isLexer, positionToAcceptSymbol, firstPosMap, positionMap);
 
             // Step 7: Apply lazy edge trimming to accepting states
-            ApplyLazyEdgeTrimming(dfa, positionToLazyParent);
+            ApplyLazyEdgeTrimming(dfa, positionToLazyParent, firstPosMap);
 
             return dfa;
         }
@@ -138,7 +141,7 @@ namespace Luthor
             });
         }
 
-        
+
 
         // Van Engelen: "mark downstream regex positions in the DFA states as lazy when a parent position is lazy"
         private static void MarkLazyPositionsWithContext(RegexExpression ast, bool inLazyContext, Dictionary<RegexExpression, RegexRepeatExpression> positionToLazyParent, Dictionary<RegexExpression, bool> lazyPositions)
@@ -188,16 +191,16 @@ namespace Luthor
             return new RegexConcatExpression(root, _endMarker);
         }
 
-        private static void AssignPositions(RegexExpression node, Dictionary<int, RegexExpression> _positions, ref int _positionCounter)
+        private static void AssignPositions(RegexExpression node, Dictionary<int, RegexExpression> _positions, ref int _positionCounter, Dictionary<RegexExpression, int> positionMap)
         {
             if (node == null) return;
 
             if (node.IsLeaf)
             {
-                if (node.GetDfaPosition() == -1)
+                if (node.GetDfaPosition(positionMap) == -1)
                 {
-                    node.SetDfaPosition(_positionCounter++);
-                    _positions[node.GetDfaPosition()] = node;
+                    node.SetDfaPosition(_positionCounter++, positionMap);
+                    _positions[node.GetDfaPosition(positionMap)] = node;
                 }
                 return;
             }
@@ -207,22 +210,22 @@ namespace Luthor
                 case RegexLexerExpression lexer:  // ADD THIS CASE
                     foreach (var rule in lexer.Rules)
                     {
-                        AssignPositions(rule, _positions, ref _positionCounter);
+                        AssignPositions(rule, _positions, ref _positionCounter, positionMap);
                     }
                     break;
                 case RegexBinaryExpression binary:
-                    AssignPositions(binary.Left, _positions, ref _positionCounter);
-                    AssignPositions(binary.Right, _positions, ref _positionCounter);
+                    AssignPositions(binary.Left, _positions, ref _positionCounter, positionMap);
+                    AssignPositions(binary.Right, _positions, ref _positionCounter, positionMap);
                     break;
 
                 case RegexUnaryExpression unary:
-                    AssignPositions(unary.Expression, _positions, ref _positionCounter);
+                    AssignPositions(unary.Expression, _positions, ref _positionCounter, positionMap);
                     break;
             }
         }
 
 
-        private static void ComputeNodeProperties(RegexExpression node)
+        private static void ComputeNodeProperties(RegexExpression node, Dictionary<RegexExpression, bool> nullableMap, Dictionary<RegexExpression, HashSet<RegexExpression>> firstPosMap, Dictionary<RegexExpression, HashSet<RegexExpression>> lastPosMap, Dictionary<RegexExpression, int> positionMap)
         {
             if (node == null) return;
 
@@ -232,117 +235,117 @@ namespace Luthor
                     // Compute properties for all rules first
                     foreach (var rule in lexer.Rules)
                     {
-                        ComputeNodeProperties(rule);
+                        ComputeNodeProperties(rule, nullableMap, firstPosMap, lastPosMap, positionMap);
                     }
 
                     // Lexer is nullable if any rule is nullable
-                    node.SetNullable(lexer.Rules.Any(r => r.GetNullable()));
+                    node.SetNullable(lexer.Rules.Any(r => r.GetNullable(nullableMap)), nullableMap);
 
                     // Lexer firstpos is union of all rules' firstpos
                     foreach (var rule in lexer.Rules)
                     {
-                        node.GetFirstPos().UnionWith(rule.GetFirstPos());
+                        node.GetFirstPos(firstPosMap).UnionWith(rule.GetFirstPos(firstPosMap));
                     }
 
                     // Lexer lastpos is union of all rules' lastpos  
                     foreach (var rule in lexer.Rules)
                     {
-                        node.GetLastPos().UnionWith(rule.GetLastPos());
+                        node.GetLastPos(lastPosMap).UnionWith(rule.GetLastPos(lastPosMap));
                     }
                     break;
                 case RegexConcatExpression concat:
-                    ComputeNodeProperties(concat.Left);
-                    ComputeNodeProperties(concat.Right);
+                    ComputeNodeProperties(concat.Left, nullableMap, firstPosMap, lastPosMap, positionMap);
+                    ComputeNodeProperties(concat.Right, nullableMap, firstPosMap, lastPosMap, positionMap);
 
                     var children = new[] { concat.Left, concat.Right }.Where(c => c != null).ToArray();
 
-                    node.SetNullable(children.All(c => c.GetNullable()));
+                    node.SetNullable(children.All(c => c.GetNullable(nullableMap)), nullableMap);
 
                     foreach (var child in children)
                     {
-                        node.GetFirstPos().UnionWith(child.GetFirstPos());
-                        if (!child.GetNullable())
+                        node.GetFirstPos(firstPosMap).UnionWith(child.GetFirstPos(firstPosMap));
+                        if (!child.GetNullable(nullableMap))
                             break;
                     }
 
                     for (int i = children.Length - 1; i >= 0; i--)
                     {
-                        node.GetLastPos().UnionWith(children[i].GetLastPos());
-                        if (!children[i].GetNullable())
+                        node.GetLastPos(lastPosMap).UnionWith(children[i].GetLastPos(lastPosMap));
+                        if (!children[i].GetNullable(nullableMap))
                             break;
                     }
                     break;
 
                 case RegexOrExpression or:
-                    ComputeNodeProperties(or.Left);
-                    ComputeNodeProperties(or.Right);
+                    ComputeNodeProperties(or.Left, nullableMap, firstPosMap, lastPosMap, positionMap);
+                    ComputeNodeProperties(or.Right, nullableMap, firstPosMap, lastPosMap, positionMap);
 
                     var orChildren = new[] { or.Left, or.Right }.Where(c => c != null).ToArray();
-                    node.SetNullable(orChildren.Any(c => c.GetNullable()));
+                    node.SetNullable(orChildren.Any(c => c.GetNullable(nullableMap)), nullableMap);
 
                     foreach (var child in orChildren)
                     {
-                        node.GetFirstPos().UnionWith(child.GetFirstPos());
-                        node.GetLastPos().UnionWith(child.GetLastPos());
+                        node.GetFirstPos(firstPosMap).UnionWith(child.GetFirstPos(firstPosMap));
+                        node.GetLastPos(lastPosMap).UnionWith(child.GetLastPos(lastPosMap));
                     }
 
 
                     break;
                 case RegexRepeatExpression repeat:
-                    ComputeNodeProperties(repeat.Expression);
+                    ComputeNodeProperties(repeat.Expression, nullableMap, firstPosMap, lastPosMap, positionMap);
 
                     if (repeat.Expression == null) break;
 
                     if (repeat.MinOccurs <= 0)
                     {
-                        node.SetNullable(true);
+                        node.SetNullable(true, nullableMap);
                     }
                     else
                     {
-                        node.SetNullable(repeat.Expression.GetNullable());
+                        node.SetNullable(repeat.Expression.GetNullable(nullableMap), nullableMap);
                     }
 
-                    node.GetFirstPos().UnionWith(repeat.Expression.GetFirstPos());
-                    node.GetLastPos().UnionWith(repeat.Expression.GetLastPos());
+                    node.GetFirstPos(firstPosMap).UnionWith(repeat.Expression.GetFirstPos(firstPosMap));
+                    node.GetLastPos(lastPosMap).UnionWith(repeat.Expression.GetLastPos(lastPosMap));
                     break;
                 case RegexTerminatorExpression:
                 case RegexLiteralExpression:
-                    node.SetNullable(false);
-                    node.GetFirstPos().Add(node);
-                    node.GetLastPos().Add(node);
+                    node.SetNullable(false, nullableMap);
+                    node.GetFirstPos(firstPosMap).Add(node);
+                    node.GetLastPos(lastPosMap).Add(node);
                     break;
 
                 case RegexAnchorExpression:
-                    node.SetNullable(true);   // ✅ FIX: Anchors are nullable/transparent
-                    node.GetFirstPos().Add(node);
-                    node.GetLastPos().Add(node);
+                    node.SetNullable(true, nullableMap);   // ✅ FIX: Anchors are nullable/transparent
+                    node.GetFirstPos(firstPosMap).Add(node);
+                    node.GetLastPos(lastPosMap).Add(node);
                     break;
                 case RegexCharsetExpression charset:
                     if (node is RegexLiteralExpression lit && (lit.Codepoint == -1))
                     {
-                        node.SetNullable(true);
+                        node.SetNullable(true, nullableMap);
                     }
                     else
                     {
-                        node.SetNullable(false);
-                        node.GetFirstPos().Add(node);
-                        node.GetLastPos().Add(node);
+                        node.SetNullable(false, nullableMap);
+                        node.GetFirstPos(firstPosMap).Add(node);
+                        node.GetLastPos(lastPosMap).Add(node);
                     }
                     break;
             }
         }
 
-        private static void ComputeFollowPos(RegexExpression node, Dictionary<int, RegexExpression> positions, Dictionary<RegexExpression, HashSet<RegexExpression>> followPos)
+        private static void ComputeFollowPos(RegexExpression node, Dictionary<int, RegexExpression> positions, Dictionary<RegexExpression, HashSet<RegexExpression>> followPos, Dictionary<RegexExpression, HashSet<RegexExpression>> lastPosMap, Dictionary<RegexExpression, HashSet<RegexExpression>> firstPosMap, Dictionary<RegexExpression, int> positionMap)
         {
             foreach (var pos in positions.Values)
             {
                 followPos[pos] = new HashSet<RegexExpression>();
             }
 
-            ComputeFollowPosRecursive(node, followPos);
+            ComputeFollowPosRecursive(node, followPos, lastPosMap, firstPosMap, positionMap);
         }
 
-        private static void ComputeFollowPosRecursive(RegexExpression node, Dictionary<RegexExpression, HashSet<RegexExpression>> _followPos)
+        private static void ComputeFollowPosRecursive(RegexExpression node, Dictionary<RegexExpression, HashSet<RegexExpression>> _followPos, Dictionary<RegexExpression, HashSet<RegexExpression>> lastPosMap, Dictionary<RegexExpression, HashSet<RegexExpression>> firstPosMap, Dictionary<RegexExpression, int> positionMap)
         {
             if (node == null) return;
 
@@ -351,7 +354,7 @@ namespace Luthor
                 case RegexLexerExpression lexerExpr:  // ADD THIS CASE
                     foreach (var rule in lexerExpr.Rules)
                     {
-                        ComputeFollowPosRecursive(rule, _followPos);
+                        ComputeFollowPosRecursive(rule, _followPos, lastPosMap, firstPosMap, positionMap);
                     }
                     break;
 
@@ -362,16 +365,16 @@ namespace Luthor
                         //var leftLast = string.Join(",", concat.Left.GetLastPos().Select(p => p.GetDfaPosition()));
                         //var rightFirst = string.Join(",", concat.Right.GetFirstPos().Select(p => p.GetDfaPosition()));
 
-                        foreach (var pos in concat.Left.GetLastPos())
+                        foreach (var pos in concat.Left.GetLastPos(lastPosMap))
                         {
                             if (_followPos.ContainsKey(pos))
                             {
-                                _followPos[pos].UnionWith(concat.Right.GetFirstPos());
+                                _followPos[pos].UnionWith(concat.Right.GetFirstPos(firstPosMap));
                             }
                         }
                     }
-                    ComputeFollowPosRecursive(concat.Left, _followPos);
-                    ComputeFollowPosRecursive(concat.Right, _followPos);
+                    ComputeFollowPosRecursive(concat.Left, _followPos, lastPosMap, firstPosMap, positionMap);
+                    ComputeFollowPosRecursive(concat.Right, _followPos, lastPosMap, firstPosMap, positionMap);
                     break;
 
                 case RegexOrExpression or:
@@ -379,8 +382,8 @@ namespace Luthor
                     // For alternation, we don't add followpos rules here
                     // The disjunction is handled in the DFA construction phase
                     // by including both branches in firstpos/lastpos
-                    ComputeFollowPosRecursive(or.Left, _followPos);
-                    ComputeFollowPosRecursive(or.Right, _followPos);
+                    ComputeFollowPosRecursive(or.Left, _followPos, lastPosMap, firstPosMap, positionMap);
+                    ComputeFollowPosRecursive(or.Right, _followPos, lastPosMap, firstPosMap, positionMap);
 
                     break;
 
@@ -395,18 +398,18 @@ namespace Luthor
                         if (canRepeat)
                         {
                             // Van Engelen: track forward/backward moves in regex string
-                            foreach (var lastPos in repeat.Expression.GetLastPos())
+                            foreach (var lastPos in repeat.Expression.GetLastPos(lastPosMap))
                             {
                                 if (_followPos.ContainsKey(lastPos))
                                 {
                                     // This is a "backward" move in the regex string (loop back)
-                                    _followPos[lastPos].UnionWith(repeat.Expression.GetFirstPos());
+                                    _followPos[lastPos].UnionWith(repeat.Expression.GetFirstPos(firstPosMap));
                                 }
                             }
                         }
                     }
 
-                    ComputeFollowPosRecursive(repeat.Expression, _followPos);
+                    ComputeFollowPosRecursive(repeat.Expression, _followPos, lastPosMap, firstPosMap, positionMap);
                     break;
             }
         }
@@ -428,9 +431,11 @@ namespace Luthor
             Dictionary<RegexTerminatorExpression, int> endMarkerToAcceptSymbol,
             Dictionary<RegexExpression, HashSet<RegexExpression>> followPos,
             bool isLexer,
-            Dictionary<RegexExpression, int> positionToAcceptSymbol)
+            Dictionary<RegexExpression, int> positionToAcceptSymbol,
+            Dictionary<RegexExpression, HashSet<RegexExpression>> firstPosMap,
+            Dictionary<RegexExpression, int> positionMap)
         {
-            var startPositions = root.GetFirstPos();
+            var startPositions = root.GetFirstPos(firstPosMap);
             var startLazyPositions = GetLazyPositions(startPositions, lazyPositions);
 
             var unmarkedStates = new Queue<Dfa>();
@@ -505,10 +510,7 @@ namespace Luthor
                         }
                     }
 
-                    var nextPosStr = string.Join(",", nextPositions.Select(p => p.GetDfaPosition()));
-
                     if (nextPositions.Count == 0) continue;
-
 
                     // Van Engelen: "Laziness is contagious" - propagate lazy attribution
                     var nextLazyPositions = PropagatelazyContagion(positions, nextPositions, currentLazyPositions, lazyPositions, followPos);
@@ -518,13 +520,10 @@ namespace Luthor
 
                     Dfa nextState;
 
-                    // Debug: Show what attributes we're comparing
-                    var posStr = string.Join(",", nextPositions.Select(p => p.GetDfaPosition()));
-                    
                     // Find existing state with same attributes, or use the new one
                     var existingState = allStates.Values.FirstOrDefault(s => {
                         bool areEqual = s.Attributes.Equals(candidateState.Attributes);
-                        
+
                         return areEqual;
                     });
 
@@ -621,7 +620,7 @@ namespace Luthor
         }
 
         // Van Engelen: "lazy edge trimming" - cut lazy edges from accepting states
-        private static void ApplyLazyEdgeTrimming(Dfa startState, Dictionary<RegexExpression, RegexRepeatExpression> positionToLazyParent)
+        private static void ApplyLazyEdgeTrimming(Dfa startState, Dictionary<RegexExpression, RegexRepeatExpression> positionToLazyParent, Dictionary<RegexExpression, HashSet<RegexExpression>> firstPosMap)
         {
             var allStates = startState.FillClosure();
 
@@ -634,14 +633,14 @@ namespace Luthor
 
                     if (lazyPositions.Count > 0)
                     {
-                        TrimLazyEdges(state, lazyPositions, positionToLazyParent);
+                        TrimLazyEdges(state, lazyPositions, positionToLazyParent, firstPosMap);
                     }
                 }
             }
         }
 
         // Van Engelen: Cut "lazy edges" by analyzing forward/backward moves
-        private static void TrimLazyEdges(Dfa acceptingState, HashSet<RegexExpression> lazyPositions, Dictionary<RegexExpression, RegexRepeatExpression> positionToLazyParent)
+        private static void TrimLazyEdges(Dfa acceptingState, HashSet<RegexExpression> lazyPositions, Dictionary<RegexExpression, RegexRepeatExpression> positionToLazyParent, Dictionary<RegexExpression, HashSet<RegexExpression>> firstPosMap)
         {
             var transitionsToRemove = new List<DfaTransition>();
 
@@ -649,7 +648,7 @@ namespace Luthor
             {
                 // Check if this transition represents a "lazy edge" that should be trimmed
                 // Van Engelen: "we know when DFA edges point forward or backward in the regex string"
-                bool isLazyEdge = IsLazyEdgeToTrim(acceptingState, transition.To, lazyPositions, positionToLazyParent);
+                bool isLazyEdge = IsLazyEdgeToTrim(acceptingState, transition.To, lazyPositions, positionToLazyParent, firstPosMap);
 
                 if (isLazyEdge)
                 {
@@ -665,7 +664,7 @@ namespace Luthor
         }
 
         // Determine if an edge should be trimmed based on lazy attribution
-        private static bool IsLazyEdgeToTrim(Dfa fromState, Dfa toState, HashSet<RegexExpression> lazyPositions, Dictionary<RegexExpression, RegexRepeatExpression> positionToLazyParent)
+        private static bool IsLazyEdgeToTrim(Dfa fromState, Dfa toState, HashSet<RegexExpression> lazyPositions, Dictionary<RegexExpression, RegexRepeatExpression> positionToLazyParent, Dictionary<RegexExpression, HashSet<RegexExpression>> firstPosMap)
         {
             var fromPositions = GetPositionsFromState(fromState);
             var toPositions = GetPositionsFromState(toState);
@@ -678,7 +677,7 @@ namespace Luthor
                 if (fromPositions.Contains(lazyPos) && positionToLazyParent.ContainsKey(lazyPos))
                 {
                     var lazyParent = positionToLazyParent[lazyPos];
-                    var parentFirstPos = lazyParent.Expression?.GetFirstPos() ?? new HashSet<RegexExpression>();
+                    var parentFirstPos = lazyParent.Expression?.GetFirstPos(firstPosMap) ?? new HashSet<RegexExpression>();
 
                     // If the transition goes to positions that include the start of the lazy construct,
                     // this represents a "backward" move that should be trimmed in lazy mode

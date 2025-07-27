@@ -205,7 +205,7 @@ namespace Luthor
             if (!char.IsWhiteSpace(Input, StringPosition))
                 return false;
             Advance();
-            if (StringPosition < Input.Length && char.IsLowSurrogate(Input,  StringPosition)) ++StringPosition;
+            if (StringPosition < Input.Length && char.IsLowSurrogate(Input, StringPosition)) ++StringPosition;
             while (StringPosition < Input.Length && char.IsWhiteSpace(Input, StringPosition))
             {
                 Advance();
@@ -300,7 +300,7 @@ namespace Luthor
         {
             Position = position;
         }
-        public List<RegexComment> Comments { get; } = new List<RegexComment> ();
+        public List<RegexComment> Comments { get; } = new List<RegexComment>();
 
         public virtual bool IsLeaf { get; } = false;
         public virtual IList<DfaRange> GetRanges()
@@ -366,10 +366,11 @@ namespace Luthor
         }
         public string ToString(string format)
         {
-            if(format=="x")
+            if (format == "x")
             {
                 return _ExpandRepeats(this).ToString();
-            } else if(string.IsNullOrEmpty(format))
+            }
+            else if (string.IsNullOrEmpty(format))
             {
                 return this.ToString();
             }
@@ -434,7 +435,18 @@ namespace Luthor
         {
             return CloneImpl();
         }
-
+        /// <summary>
+        /// Appends the cooments attached to the expression to the output
+        /// </summary>
+        /// <param name="sb">The builder to fill</param>
+        /// <remarks>Comments should appear on lines before the expression</remarks>
+        protected void AppendComments(StringBuilder sb)
+        {
+            foreach (var comment in Comments)
+            {
+                comment.AppendTo(sb);
+            }
+        }
         /// <summary>
         /// Appends the textual representation to a <see cref="StringBuilder"/>
         /// </summary>
@@ -466,7 +478,7 @@ namespace Luthor
             pc.Input = expression;
             return _Parse(pc);
         }
-        
+
         private static RegexExpression? _Parse(StringCursor pc)
         {
             var result = new RegexLexerExpression();
@@ -531,7 +543,7 @@ namespace Luthor
             RegexExpression? result = null, next = null;
             int ich;
             bool cap;
-            string nmgrp=null;
+            string nmgrp = null;
             pc.EnsureStarted();
             var position = pc.Position;
             while (true)
@@ -659,15 +671,16 @@ namespace Luthor
                         pc.Advance();
                         pc.Expecting();
                         cap = true;
-                        if(pc.Codepoint=='?')
+                        if (pc.Codepoint == '?')
                         {
                             pc.Advance();
-                            if(pc.Codepoint==':')
+                            if (pc.Codepoint == ':')
                             {
                                 pc.Advance();
                                 pc.Expecting();
                                 cap = false;
-                            } else
+                            }
+                            else
                             {
                                 pc.Expecting('<');
                                 pc.Advance();
@@ -675,7 +688,7 @@ namespace Luthor
                                 pc.TryReadUntil('>', false);
                                 pc.Advance();
                                 nmgrp = pc.CaptureBuffer.ToString();
-                                if(nmgrp.Length==0)
+                                if (nmgrp.Length == 0)
                                 {
                                     nmgrp = null;
                                 }
@@ -685,7 +698,7 @@ namespace Luthor
                         pc.Expecting(')');
                         pc.Advance();
                         next = _ParseModifier(next, pc);
-                        
+
                         if (null == result)
                             result = next;
                         else
@@ -925,7 +938,7 @@ namespace Luthor
                     pc.Advance();
                     break;
                 case '+':
-                    rep= new RegexRepeatExpression(expr, 1);
+                    rep = new RegexRepeatExpression(expr, 1);
                     expr = rep;
                     expr.SetLocation(position);
                     pc.Advance();
@@ -970,7 +983,7 @@ namespace Luthor
                     expr.SetLocation(position);
                     break;
             }
-            if (pc.Codepoint == '?' && rep!=null)
+            if (pc.Codepoint == '?' && rep != null)
             {
                 rep.IsLazy = true;
                 pc.Advance();
@@ -1399,8 +1412,7 @@ namespace Luthor
         /// <remarks>Used by ToString()</remarks>
         protected internal override void AppendTo(StringBuilder sb)
         {
-            sb.Append("<<END>>");
-
+            // do nothing, so it never gets reparsed
         }
 
         /// <summary>
@@ -1433,7 +1445,8 @@ namespace Luthor
         /// <summary>
         /// Creates a terminator expression with the specified codepoint
         /// </summary>
-        public RegexComment(string? text = null) {
+        public RegexComment(string? text = null)
+        {
             Text = text;
         }
 
@@ -1442,17 +1455,9 @@ namespace Luthor
         /// </summary>
         public override string ToString()
         {
-            if(string.IsNullOrEmpty(Text))
-            {
-                return $"#{Environment.NewLine}";
-            }
-            var sr = new StringReader(Text);
-            var sb = new StringBuilder((int)(Text.Length*1.5));
-            for(var line = sr.ReadLine();line!=null;line = sr.ReadLine())
-            {
-                sb.AppendLine($"# {line}");
-            }
-            return sb.ToString();  
+            var sb = new StringBuilder((int)(Text.Length * 1.5));
+            AppendTo(sb);
+            return sb.ToString();
         }
         /// <summary>
         /// Creates a new copy of this expression
@@ -1466,6 +1471,19 @@ namespace Luthor
         {
             return Clone();
         }
+        internal void AppendTo(StringBuilder sb)
+        {
+            if (string.IsNullOrEmpty(Text))
+            {
+                sb.AppendLine("@");
+                return;
+            }
+            var sr = new StringReader(Text);
+            for (var line = sr.ReadLine(); line != null; line = sr.ReadLine())
+            {
+                sb.AppendLine($"# {line}");
+            }
+        }
         #region Value semantics
         /// <summary>
         /// Indicates whether this expression is the same as the right hand expression
@@ -1477,7 +1495,7 @@ namespace Luthor
             if (ReferenceEquals(rhs, this)) return true;
             if (ReferenceEquals(rhs, null)) return false;
             if (Position != rhs.Position) return false;
-            return (string.IsNullOrEmpty(Text) && string.IsNullOrEmpty(rhs.Text)) || 0==string.CompareOrdinal(Text, rhs.Text);
+            return (string.IsNullOrEmpty(Text) && string.IsNullOrEmpty(rhs.Text)) || 0 == string.CompareOrdinal(Text, rhs.Text);
         }
         /// <summary>
         /// Indicates whether this expression is the same as the right hand expression
@@ -1562,7 +1580,7 @@ namespace Luthor
         /// Indicates the rules in this expression
         /// </summary>
         public List<RegexExpression> Rules { get; } = new List<RegexExpression>();
-        
+
         /// <summary>
         /// Creates a lexer expression with the specified rules
         /// </summary>
@@ -1572,7 +1590,7 @@ namespace Luthor
         /// Creates a lexer expression with the specified rules
         /// </summary>
         /// <param name="rules">The rules/param>
-        public RegexLexerExpression(params RegexExpression[] rules) { if(rules.Length>0) Rules.AddRange(rules); }
+        public RegexLexerExpression(params RegexExpression[] rules) { if (rules.Length > 0) Rules.AddRange(rules); }
 
         /// <summary>
         /// Appends the textual representation to a <see cref="StringBuilder"/>
@@ -1581,7 +1599,8 @@ namespace Luthor
         /// <remarks>Used by ToString()</remarks>
         protected internal override void AppendTo(StringBuilder sb)
         {
-            foreach(var expr in Rules)
+            AppendComments(sb); // usually the comments won't be here, but actually on the first rule
+            foreach (var expr in Rules)
             {
                 expr.AppendTo(sb);
                 sb.AppendLine();
@@ -1601,7 +1620,7 @@ namespace Luthor
         public new RegexLexerExpression Clone()
         {
             var rules = new List<RegexExpression>(Rules.Count);
-            foreach(var rule in Rules)
+            foreach (var rule in Rules)
             {
                 rules.Add(rule.Clone());
             }
@@ -1619,8 +1638,8 @@ namespace Luthor
             if (ReferenceEquals(rhs, this)) return true;
             if (ReferenceEquals(rhs, null)) return false;
             if (Position != rhs.Position) return false;
-            if(Rules.Count != rhs.Rules.Count) return false;
-            for(int i = 0;i< Rules.Count;i++)
+            if (Rules.Count != rhs.Rules.Count) return false;
+            for (int i = 0; i < Rules.Count; i++)
             {
                 if (!Rules[i].Equals(rhs.Rules[i])) return false;
             }
@@ -1640,7 +1659,7 @@ namespace Luthor
         public override int GetHashCode()
         {
             var result = Position.GetHashCode();
-            foreach(var rule in Rules)
+            foreach (var rule in Rules)
             {
                 result ^= rule.GetHashCode();
             }
@@ -1739,7 +1758,7 @@ namespace Luthor
         public static RegexExpression CreateString(IEnumerable<char> value)
         {
             var exprs = new List<RegexLiteralExpression>();
-            foreach(var cp in ToUtf32(value))
+            foreach (var cp in ToUtf32(value))
             {
                 exprs.Add(new RegexLiteralExpression(cp));
             }
@@ -1752,14 +1771,15 @@ namespace Luthor
         /// <remarks>Used by ToString()</remarks>
         protected internal override void AppendTo(StringBuilder sb)
         {
+            AppendComments(sb);
             if (Codepoint == -1)
             {
                 return;
             }
             AppendEscapedChar(char.ConvertFromUtf32(Codepoint), sb);
-            
+
         }
-       
+
         /// <summary>
         /// Creates a new copy of this expression
         /// </summary>
@@ -1785,7 +1805,7 @@ namespace Luthor
         {
             if (ReferenceEquals(rhs, this)) return true;
             if (ReferenceEquals(rhs, null)) return false;
-            if(Position!=rhs.Position) return false;
+            if (Position != rhs.Position) return false;
             return Codepoint == rhs.Codepoint;
         }
         /// <summary>
@@ -1848,12 +1868,12 @@ namespace Luthor
         /// Indicates the anchor type of this expression
         /// </summary>
         public RegexAnchorType Type { get; set; } = RegexAnchorType.LineStart;
-       
+
         /// <summary>
         /// Creates a literal expression with the specified codepoint
         /// </summary>
         /// <param name="type">The anchor type to represent</param>
-        public RegexAnchorExpression(RegexAnchorType type= RegexAnchorType.LineStart) { Type = type; }
+        public RegexAnchorExpression(RegexAnchorType type = RegexAnchorType.LineStart) { Type = type; }
 
         /// <summary>
         /// Appends the textual representation to a <see cref="StringBuilder"/>
@@ -1862,7 +1882,8 @@ namespace Luthor
         /// <remarks>Used by ToString()</remarks>
         protected internal override void AppendTo(StringBuilder sb)
         {
-            switch(Type)
+            AppendComments(sb);
+            switch (Type)
             {
                 case RegexAnchorType.LineStart:
                     sb.Append('^');
@@ -1872,7 +1893,7 @@ namespace Luthor
                     break;
             }
         }
-       
+
         /// <summary>
         /// Creates a new copy of this expression
         /// </summary>
@@ -2406,6 +2427,7 @@ namespace Luthor
         /// <remarks>Used by ToString()</remarks>
         protected internal override void AppendTo(StringBuilder sb)
         {
+            AppendComments(sb);
             // special case for "."
             if (1 == Entries.Count)
             {
@@ -2486,7 +2508,7 @@ namespace Luthor
         {
             if (ReferenceEquals(rhs, this)) return true;
             if (ReferenceEquals(rhs, null)) return false;
-            if(Position!= rhs.Position) return false;
+            if (Position != rhs.Position) return false;
             if (HasNegatedRanges == rhs.HasNegatedRanges && rhs.Entries.Count == Entries.Count)
             {
                 for (int ic = Entries.Count, i = 0; i < ic; ++i)
@@ -2597,7 +2619,8 @@ namespace Luthor
                     {
                         current.Right = new RegexConcatExpression(exprs[i], null);
                         current = (RegexConcatExpression)current.Right;
-                    } else
+                    }
+                    else
                     {
                         current.Right = exprs[i];
                     }
@@ -2639,7 +2662,8 @@ namespace Luthor
             if (ReferenceEquals(rhs, this)) return true;
             if (ReferenceEquals(rhs, null)) return false;
             if (Position != rhs.Position) return false;
-            if ((Left == null && rhs.Left == null)||(Left!=null && Left.Equals(rhs.Left))) {
+            if ((Left == null && rhs.Left == null) || (Left != null && Left.Equals(rhs.Left)))
+            {
                 return ((Right == null && rhs.Right == null) || (Right != null && Right.Equals(rhs.Right)));
             }
             return false;
@@ -2700,6 +2724,7 @@ namespace Luthor
         /// <remarks>Used by ToString()</remarks>
         protected internal override void AppendTo(StringBuilder sb)
         {
+            AppendComments(sb);
             if (Left != null)
             {
                 var oe = Left as RegexOrExpression;
@@ -2800,19 +2825,22 @@ namespace Luthor
         /// <remarks>Used by ToString()</remarks>
         protected internal override void AppendTo(StringBuilder sb)
         {
+            AppendComments(sb);
             bool hasNull = false;
             if (Left != null && !Left.IsEmptyElement)
             {
                 Left.AppendTo(sb);
-            } else
+            }
+            else
             {
                 hasNull = true;
             }
-            if(Right != null && !Right.IsEmptyElement)
+            if (Right != null && !Right.IsEmptyElement)
             {
                 sb.Append("|");
                 Right.AppendTo(sb);
-            } else
+            }
+            else
             {
                 hasNull = true;
             }
@@ -2849,7 +2877,7 @@ namespace Luthor
         {
             if (ReferenceEquals(rhs, this)) return true;
             if (ReferenceEquals(rhs, null)) return false;
-            if(Position!=rhs.Position) return false;
+            if (Position != rhs.Position) return false;
             if ((Left == null && rhs.Left == null) || (Left != null && Left.Equals(rhs.Left)))
             {
                 return ((Right == null && rhs.Right == null) || (Right != null && Right.Equals(rhs.Right)));
@@ -2972,7 +3000,8 @@ namespace Luthor
         /// <remarks>Used by ToString()</remarks>
         protected internal override void AppendTo(StringBuilder sb)
         {
-            if(Expression == null || Expression.IsEmptyElement)
+            AppendComments(sb);
+            if (Expression == null || Expression.IsEmptyElement)
             {
                 return;
             }
@@ -3038,14 +3067,14 @@ namespace Luthor
                     sb.Append('}');
                     break;
             }
-            if(IsLazy)
+            if (IsLazy)
             {
                 sb.Append('?');
             }
         }
         public RegexExpression ExpandRepeats()
         {
-            if ((MinOccurs < 2 && MaxOccurs<=MinOccurs) || Expression == null || Expression.IsEmptyElement)
+            if ((MinOccurs < 2 && MaxOccurs <= MinOccurs) || Expression == null || Expression.IsEmptyElement)
             {
                 return this;
             }
@@ -3074,7 +3103,8 @@ namespace Luthor
                     if (expr is RegexRepeatExpression repeat)
                     {
                         expr = repeat.ExpandRepeats();
-                    } else
+                    }
+                    else
                     {
                         expr = expr.Clone();
                     }
@@ -3111,7 +3141,7 @@ namespace Luthor
             if (ReferenceEquals(rhs, this)) return true;
             if (ReferenceEquals(rhs, null)) return false;
             if (Position != rhs.Position) return false;
-            if(IsLazy!=rhs.IsLazy) return false;
+            if (IsLazy != rhs.IsLazy) return false;
             if (Equals(Expression, rhs.Expression))
             {
                 var lmio = Math.Max(0, MinOccurs);
@@ -3135,7 +3165,7 @@ namespace Luthor
         /// <returns>A hash code for this expression</returns>
         public override int GetHashCode()
         {
-            var result = Position.GetHashCode() ^ Math.Max(MinOccurs,0) ^ Math.Max(MaxOccurs,0) ^ IsLazy.GetHashCode();
+            var result = Position.GetHashCode() ^ Math.Max(MinOccurs, 0) ^ Math.Max(MaxOccurs, 0) ^ IsLazy.GetHashCode();
             if (null != Expression)
                 return result ^ Expression.GetHashCode();
             return result;

@@ -33,6 +33,7 @@
     <Compile Remove="DfaBuilder2.cs" />
     <Compile Remove="DfaBuilder3.cs" />
     <Compile Remove="DfaBuilder5.cs" />
+    <Compile Remove="RegexExpressionNewFailed.cs" />
   </ItemGroup>
 
   <ItemGroup>

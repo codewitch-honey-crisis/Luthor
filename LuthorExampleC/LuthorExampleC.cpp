@@ -52,7 +52,6 @@ static int lex_non_ranged(const char** data, const int* dfa) {
                 *data = sz;
                 return accept_id;
             }
-            // DON'T fall through - either continue or break
         }
         if (*sz == '\0') break;
     }
@@ -111,7 +110,6 @@ static int lex_ranged(const char** data, const int* dfa) {
                 *data = sz;
                 return accept_id;
             }
-            // DON'T fall through - either continue or break
         }
         if (*sz == '\0') break;
     }

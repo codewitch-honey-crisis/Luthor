@@ -13,7 +13,8 @@ namespace Luthor
         public static Dfa BuildDfa(RegexExpression regexAst)
         {
             // we have to expand the tree
-            regexAst = RegexExpression.Parse(regexAst.ToString("x"));
+            //regexAst = RegexExpression.Parse(regexAst.ToString("x"));
+            regexAst = regexAst.ExpandRepeatingQuantifiers();
             int positionCounter = 1;
             RegexTerminatorExpression endMarker = null;
             int[] points;

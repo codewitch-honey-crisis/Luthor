@@ -145,21 +145,35 @@ namespace Luthor
             return newState;
         }
 
-        /// <summary>
-        /// Convert a Unicode codepoint range to UTF-8 byte patterns
-        /// </summary>
         private static List<Utf8BytePattern> ConvertCodepointRangeToUtf8Patterns(int minCodepoint, int maxCodepoint)
         {
             var patterns = new List<Utf8BytePattern>();
 
-            // Split the range by UTF-8 encoding length boundaries
             var currentMin = minCodepoint;
 
             while (currentMin <= maxCodepoint)
             {
+                // PROBLEM: Need to skip surrogate range here
+                if (currentMin >= 0xD800 && currentMin <= 0xDFFF)
+                {
+                    currentMin = 0xE000; // Skip to after surrogate range
+                    if (currentMin > maxCodepoint) break;
+                }
+
                 int utf8Length = GetUtf8Length(currentMin);
                 int maxForLength = GetMaxCodepointForUtf8Length(utf8Length);
                 int currentMax = Math.Min(maxCodepoint, maxForLength);
+
+                // Also need to check if currentMax falls in surrogate range
+                if (currentMax >= 0xD800 && currentMax <= 0xDFFF)
+                {
+                    currentMax = 0xD7FF; // End before surrogate range
+                    if (currentMax < currentMin)
+                    {
+                        currentMin = 0xE000;
+                        continue;
+                    }
+                }
 
                 // Generate pattern for this UTF-8 length range
                 var subPatterns = GenerateUtf8PatternsForRange(currentMin, currentMax, utf8Length);
@@ -168,13 +182,20 @@ namespace Luthor
                 currentMin = currentMax + 1;
             }
 
-
             return patterns;
         }
 
         private static List<Utf8BytePattern> GenerateUtf8PatternsForRange(int minCodepoint, int maxCodepoint, int utf8Length)
         {
+
+            if ((minCodepoint >= 0xD800 && minCodepoint <= 0xDFFF) ||
+    (maxCodepoint >= 0xD800 && maxCodepoint <= 0xDFFF))
+            {
+                throw new InvalidOperationException($"Surrogate codepoints are not valid: [{minCodepoint:X}-{maxCodepoint:X}]");
+            }
+
             var patterns = new List<Utf8BytePattern>();
+
 
             // For large ranges, we might need to break them down further
             // to avoid overly broad byte ranges
@@ -243,6 +264,12 @@ namespace Luthor
 
                 for (int cp = minCodepoint; cp <= maxCodepoint; cp += step)
                 {
+                    // SKIP SURROGATE CODEPOINTS - they are not valid Unicode scalar values
+                    if (cp >= 0xD800 && cp <= 0xDFFF)
+                    {
+                        continue;
+                    }
+
                     var bytes = Encoding.UTF8.GetBytes(char.ConvertFromUtf32(cp));
                     if (bytes.Length == utf8Length && bytePos < bytes.Length)
                     {
@@ -254,7 +281,6 @@ namespace Luthor
 
             return (minByte, maxByte);
         }
-
         private static int GetUtf8Length(int codepoint)
         {
             if (codepoint < 0x80) return 1;

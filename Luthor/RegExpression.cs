@@ -364,6 +364,12 @@ namespace Luthor
             });
             return start;
         }
+        public RegexExpression ExpandRepeatingQuantifiers()
+        {
+            var result = _ExpandRepeats(this);
+            result.SetSynthesizedPositions();
+            return result;
+        }
         public string ToString(string format)
         {
             if (format == "x")
@@ -1381,6 +1387,78 @@ namespace Luthor
                     int i = pc.Codepoint;
                     pc.Advance();
                     return i;
+            }
+        }
+        /// <summary>
+        /// Assigns synthesized positions to this expression and all child expressions
+        /// </summary>
+        public void SetSynthesizedPositions()
+        {
+            long position = 0;
+            AssignSynthesizedPositions(this, ref position);
+        }
+
+        /// <summary>
+        /// Assigns synthesized positions to this expression and all child expressions, starting at the specified position
+        /// </summary>
+        /// <param name="startPosition">The starting position to assign</param>
+        public void SetSynthesizedPositions(long startPosition)
+        {
+            long position = startPosition;
+            AssignSynthesizedPositions(this, ref position);
+        }
+
+        private static void AssignSynthesizedPositions(RegexExpression expr, ref long position)
+        {
+            switch (expr)
+            {
+                case RegexLiteralExpression literal:
+                    literal.SetLocation(position++);
+                    break;
+
+                case RegexCharsetExpression charset:
+                    charset.SetLocation(position++);
+                    break;
+
+                case RegexAnchorExpression anchor:
+                    anchor.SetLocation(position++);
+                    break;
+
+                case RegexConcatExpression concat:
+                    concat.SetLocation(position++);
+                    if (concat.Left != null)
+                        AssignSynthesizedPositions(concat.Left, ref position);
+                    if (concat.Right != null)
+                        AssignSynthesizedPositions(concat.Right, ref position);
+                    break;
+
+                case RegexOrExpression or:
+                    or.SetLocation(position++);
+                    if (or.Left != null)
+                        AssignSynthesizedPositions(or.Left, ref position);
+                    if (or.Right != null)
+                        AssignSynthesizedPositions(or.Right, ref position);
+                    break;
+
+                case RegexRepeatExpression repeat:
+                    repeat.SetLocation(position++);
+                    if (repeat.Expression != null)
+                        AssignSynthesizedPositions(repeat.Expression, ref position);
+                    break;
+
+                case RegexLexerExpression lexer:
+                    lexer.SetLocation(position++);
+                    foreach (var rule in lexer.Rules)
+                        AssignSynthesizedPositions(rule, ref position);
+                    break;
+
+                case RegexTerminatorExpression terminator:
+                    terminator.SetLocation(position++);
+                    break;
+
+                default:
+                    expr.SetLocation(position++);
+                    break;
             }
         }
     }

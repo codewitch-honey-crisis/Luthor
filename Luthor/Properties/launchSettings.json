@@ -22,7 +22,7 @@
     },
     "Testing": {
       "commandName": "Project",
-      "commandLineArgs": "(a|b)$"
+      "commandLineArgs": "hello"
     }
   }
 }

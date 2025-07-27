@@ -13,7 +13,7 @@
     <AssemblyVersion>0.1.0.0</AssemblyVersion>
     <FileVersion>0.1.0.0</FileVersion>
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
-    <PublishTrimmed>True</PublishTrimmed>
+    <PublishTrimmed>False</PublishTrimmed>
     <PublishAot>False</PublishAot>
     <SignAssembly>True</SignAssembly>
     <AssemblyOriginatorKeyFile>Key.snk</AssemblyOriginatorKeyFile>
@@ -22,6 +22,9 @@
     <Company>honey the codewitch</Company>
     <Authors>honey the codewitch</Authors>
     <PackAsTool>True</PackAsTool>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <PackageTags>DFA;lexer;scanner;matching</PackageTags>
+    <PackageId>Luthor-tool</PackageId>
   </PropertyGroup>
 
   <ItemGroup>

@@ -44,11 +44,15 @@ dotnet tool install luthor -g
 # Single expression
 luthor "[0-9]+"
 ```
-### Lexer from file  
+### Lexer from file
+```bash
 luthor mylexer.txt
+```
 
 ### Generate state diagram
+```bash
 luthor mylexer.txt --graph output.png
+```
 
 ## Lexer Input Format
 

@@ -126,7 +126,7 @@ For each state:
 ### Example Breakdown
 
 ```
-// Pattern: [A-Z]+
+// Pattern: [A-Z__]+
 int dfa[] = {
     -1, 0, 1,        // State 0: not accepting, no anchors, 1 transition
     11, 3,           // -> go to state 11 on 3 ranges:

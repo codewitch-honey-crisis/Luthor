@@ -125,7 +125,7 @@ For each state:
 
 ### Example Breakdown
 
-```
+```c
 // Pattern: [A-Z__]+
 int dfa[] = {
     -1, 0, 1,        // State 0: not accepting, no anchors, 1 transition

@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Text;
 using Luthor;
+using System.Text.Unicode;
 public class EncodingConverter : TypeConverter
 {
     public override object? ConvertFrom(ITypeDescriptorContext? context, CultureInfo? culture, object value)
@@ -61,6 +62,12 @@ static class Program
     }
     static void Main(string[] args)
     {
+        // if you use the DFAS in this code the order must be
+        //       RegexExpression
+        //         ->ToDfa()                    // Unicode codepoint DFA
+        //         ->RenderToFile()            // Visualize human-readable version  
+        //         ->UTF8 / UTF16 transformation // Split ranges, add intermediate states
+        //         ->ToMinimized()             // Optimize the transformed structure
         using (var allArgs = CliUtility.ParseAndSet(args, null, typeof(Program), 0, null, "--"))
         {
             if(Help)
@@ -77,7 +84,6 @@ static class Program
             Console.Error.WriteLine();
             var expr = RegexExpression.Parse(Input!);
             var dfa = expr!.ToDfa();
-            //dfa = dfa.ToMinimized();
             //dfa.RenderToFile(@"..\..\..\dfa.jpg");
             if(Enc== Encoding.UTF8)
             {
@@ -89,6 +95,7 @@ static class Program
                 dfa = DfaUtf16Transformer.TransformToUtf16(dfa);
             }
             Console.Error.WriteLine();
+            dfa = dfa.ToMinimized();
             var array = dfa.ToArray();
             if (Dfa.IsRangeArray(array))
             {

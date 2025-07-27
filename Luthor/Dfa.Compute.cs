@@ -181,12 +181,16 @@ namespace Luthor
                 pp.Add(0);
                 foreach (var t in ffa._transitions)
                 {
+                    // Skip anchor codepoints when building alphabet
+                    if (t.Min < 0) continue;
+
                     pp.Add(t.Min);
                     if (t.Max < 0x10ffff)
                     {
                         pp.Add((t.Max + 1));
                     }
                 }
+                
             }
 
             var sigma = new int[pp.Count];

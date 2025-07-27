@@ -721,12 +721,22 @@ namespace Luthor
         }
         static bool _IsPrintable(int cp)
         {
-            var str = char.ConvertFromUtf32(cp);
-            if(!char.IsWhiteSpace(str,0) && char.IsSymbol(str,0))
+            try
+            {
+
+
+                var str = char.ConvertFromUtf32(cp);
+                if (!char.IsWhiteSpace(str, 0) && char.IsSymbol(str, 0))
+                {
+                    return false;
+                }
+
+                return true;
+            }
+            catch
             {
                 return false;
             }
-            return true;
         }
         void _WriteDotTo(TextWriter writer)
         {

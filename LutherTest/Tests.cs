@@ -707,72 +707,71 @@ namespace Luthor
                 "hello world!",
                 "hello world!\n"
             };
-            try
+
+            var ccommentLazy = "# C comment\n" + @"/\*(.|\n)*?\*/";
+            var test1 = "(?<baz>foo|fubar)+";
+            var test2 = "(a|b)*?(b{2})";
+            var test3 = "^hello world!$";
+            var lexer = $"# Test Lexer\n{test1}\n{ccommentLazy}\n{test2}\n{test3}";
+            var ast = RegexExpression.Parse(lexer)!;
+
+            Console.WriteLine("Expression/Lexer:");
+            Console.WriteLine(lexer);
+
+            var dfa = ast.ToDfa();
+            Console.WriteLine("DFA construction successful!");
+            Console.WriteLine($"Start state created with {dfa.Transitions.Count} transitions. State machine has {dfa.FillClosure().Count} states.");
+            // Test the DFA with some strings
+            foreach (var input in inputs) TestUtf32Dfa(dfa, input);
+
+            Console.WriteLine();
+
+            var utf16dfa = DfaUtf16Transformer.TransformToUtf16(dfa);
+            Console.WriteLine("UTF16 transformation successful!");
+
+
+            Console.WriteLine("DFA construction successful!");
+            Console.WriteLine($"Start state created with {utf16dfa.Transitions.Count} transitions. State machine has {utf16dfa.FillClosure().Count} states.");
+
+            // Test the DFA with some strings
+            foreach (var input in inputs) TestUtf16Dfa(utf16dfa, input);
+
+            Console.WriteLine();
+
+            var utf8dfa = DfaUtf8Transformer.TransformToUtf8(dfa);
+            Console.WriteLine("UTF8 transformation successful!");
+
+            var array = utf8dfa.ToArray();
+            if (Dfa.IsRangeArray(array))
             {
-
-                var ccommentLazy = "# C comment\n" + @"/\*(.|\n)*?\*/";
-                var test1 = "(?<baz>foo|fubar)+";
-                var test2 = "(a|b)*?(b{2})";
-                var test3 = "^hello world!$";
-                var lexer = $"# Test Lexer\n{test1}\n{ccommentLazy}\n{test2}\n{test3}";
-                var ast = RegexExpression.Parse(lexer)!;
-                
-                Console.WriteLine("Expression/Lexer:");
-                Console.WriteLine(lexer);
-
-                var dfa = ast.ToDfa();
-                dfa.RenderToFile(@"..\..\..\dfa.dot");
-                dfa.RenderToFile(@"..\..\..\dfa.jpg");
-                Console.WriteLine("DFA construction successful!");
-                Console.WriteLine($"Start state created with {dfa.Transitions.Count} transitions. State machine has {dfa.FillClosure().Count} states.");
-                // Test the DFA with some strings
-                foreach (var input in inputs) TestUtf32Dfa(dfa, input);
-                
-                Console.WriteLine();
-
-                var utf16dfa = DfaUtf16Transformer.TransformToUtf16(dfa);
-                Console.WriteLine("UTF16 transformation successful!");
-
-                utf16dfa.RenderToFile(@"..\..\..\utf16dfa.dot");
-                utf16dfa.RenderToFile(@"..\..\..\utf16dfa.jpg");
-                Console.WriteLine("DFA construction successful!");
-                Console.WriteLine($"Start state created with {utf16dfa.Transitions.Count} transitions. State machine has {utf16dfa.FillClosure().Count} states.");
-
-                // Test the DFA with some strings
-                foreach (var input in inputs) TestUtf16Dfa(utf16dfa, input);
-
-                Console.WriteLine();
-
-                var utf8dfa = DfaUtf8Transformer.TransformToUtf8(dfa);
-                Console.WriteLine("UTF8 transformation successful!");
-                utf8dfa.RenderToFile(@"..\..\..\utf8dfa.dot");
-                utf8dfa.RenderToFile(@"..\..\..\utf8dfa.jpg");
-
-                var array = utf8dfa.ToArray();
-                if (Dfa.IsRangeArray(array))
-                {
-                    Console.WriteLine("Using range array");
-                }
-                else
-                {
-                    Console.WriteLine("Using non range array");
-                }
-
-                Console.WriteLine($"Start state created with {utf8dfa.Transitions.Count} transitions. State machine has {utf8dfa.FillClosure().Count} states. Array length is {array.Length}");
-
-                // Test the DFA with some strings
-                foreach (var input in inputs) TestUtf8Dfa(utf8dfa, input);
-
-                Console.WriteLine();
-                Console.WriteLine("Testing over array");
-                foreach (var input in inputs) TestUtf8DfaArray(array,input);
-
+                Console.WriteLine("Using range array");
             }
-            catch (Exception ex)
+            else
             {
-                Console.WriteLine($"Error: {ex.Message}");
-                Console.WriteLine(ex.StackTrace);
+                Console.WriteLine("Using non range array");
             }
+
+            Console.WriteLine($"Start state created with {utf8dfa.Transitions.Count} transitions. State machine has {utf8dfa.FillClosure().Count} states. Array length is {array.Length}");
+
+            // Test the DFA with some strings
+            foreach (var input in inputs) TestUtf8Dfa(utf8dfa, input);
+
+            Console.WriteLine();
+            Console.WriteLine("Testing over array");
+            foreach (var input in inputs) TestUtf8DfaArray(array, input);
+
+            Console.WriteLine();
+            Console.WriteLine("==== Testing minimized dfas =====");
+
+            dfa = dfa.ToMinimized();
+            foreach (var input in inputs) TestUtf32Dfa(dfa, input);
+
+            utf16dfa = utf16dfa.ToMinimized();
+            foreach (var input in inputs) TestUtf16Dfa(utf16dfa, input);
+
+            utf8dfa = utf8dfa.ToMinimized();
+            foreach (var input in inputs) TestUtf8Dfa(utf16dfa, input);
+
         }
         static void TestUtf32Dfa(Dfa startState, string input)
         {

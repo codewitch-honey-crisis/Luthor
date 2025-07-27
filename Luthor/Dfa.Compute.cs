@@ -164,29 +164,12 @@ namespace Luthor
             progress?.Report(prog);
             // Make arrays for numbered states and effective alphabet.
             var cl = a.FillClosure();
-            var cleanAttributes = new DfaAttributes();
+
 
             var states = new Dfa[cl.Count];
             int number = 0;
             foreach (var q in cl)
             {
-                cleanAttributes.Clear();
-                // Only keep attributes that affect minimization
-                if (q.Attributes.ContainsKey("AcceptSymbol"))
-                {
-                    cleanAttributes["AcceptSymbol"] = q.Attributes["AcceptSymbol"];
-                }
-                if (q.Attributes.ContainsKey("AnchorMask"))
-                {
-                    cleanAttributes["AnchorMask"] = q.Attributes["AnchorMask"];
-                }
-
-                q.Attributes.Clear();
-                foreach (var attr in cleanAttributes)
-                {
-                    q.Attributes[attr.Key] = attr.Value;
-                }
-
                 states[number] = q;
                 q._MinimizationTag = number;
                 ++number;

@@ -10,7 +10,7 @@
     },
     "Demo.lex": {
       "commandName": "Project",
-      "commandLineArgs": "..\\..\\..\\demo.lex"
+      "commandLineArgs": "..\\..\\..\\demo.lex --graph ..\\..\\..\\demo.jpg"
     },
     "Block Comment": {
       "commandName": "Project",

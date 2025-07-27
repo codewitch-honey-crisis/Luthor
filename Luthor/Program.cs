@@ -31,6 +31,9 @@ static class Program
     static string? Input = null;
     [CmdArg(Name = "enc",Optional =true,ElementName ="encoding",ElementConverter ="EncodingConverter",Description ="The encoding to use (ASCII, UTF-8, UTF-16, or UTF-32). Defaults to UTF-8")]
     static Encoding Enc = Encoding.UTF8;
+    [CmdArg(Name = "graph", Optional = true, ElementName = "graph", Description = "Generate a DFA state graph to the specified file (requires GraphViz)")]
+    static FileInfo Graph;
+
     [CmdArg(Name="?", Group="Help",Optional = true,Description = "Displays this help screen")]
     static bool Help = false;
     static void PrintArray(int[] arr)
@@ -104,6 +107,14 @@ static class Program
             var expr = RegexExpression.Parse(Input!);
             var dfa = expr!.ToDfa();
             Console.Error.WriteLine($"Created initial machine with {dfa.FillClosure().Count} states.");
+            if (Graph != null)
+            {
+                if (Graph.Exists)
+                {
+                    try { Graph.Delete(); } catch { }
+                }
+                dfa.RenderToFile(Graph.FullName);
+            }
             var len = dfa.GetArrayLength();
             Console.Error.Write("Minimizing...");
             dfa = dfa.ToMinimized();

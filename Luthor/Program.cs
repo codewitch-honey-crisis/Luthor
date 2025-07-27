@@ -131,7 +131,7 @@ static class Program
                 var finalSize = (tlen * 100 / len);
                 var expansionCost = (tlen * 100 / mlen) - 100;
                 Console.Error.WriteLine($"done! {expansionCost}% larger than minimized.");
-                Console.Error.WriteLine($"Net effect: {finalSize}% of original size.");
+                Console.Error.WriteLine($"Net effect: {finalSize}% of original length*.");
 
             }
             Console.Error.WriteLine();
@@ -139,14 +139,18 @@ static class Program
 
             var width = GetArrayWidth(array);
             var label = (width!=1)?"bytes":"byte";
-            
+
+            Console.Error.WriteLine($"The array takes a minimum of {width*array.Length} bytes to store");
+            Console.Error.WriteLine();
             if (Dfa.IsRangeArray(array))
             {
-                Console.Error.WriteLine($"Emitting ranged jump table array with a size of {array.Length} and an element width of {width} {label}");
+                Console.Error.WriteLine($"Emitting ranged jump table array with a length of {array.Length} and an element width of {width} {label}");
             } else
             {
-                Console.Error.WriteLine($"Emitting non-ranged jump table array with a size of {array.Length} and an element width of {width} {label}");
+                Console.Error.WriteLine($"Emitting non-ranged jump table array with a length of {array.Length} and an element width of {width} {label}");
             }
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("* values do not reflect the relative width of the elements, only the total length of the array.");
             Console.Error.WriteLine();
             PrintArray(array);
         }

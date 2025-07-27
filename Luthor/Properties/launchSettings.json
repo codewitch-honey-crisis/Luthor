@@ -16,10 +16,6 @@
       "commandName": "Project",
       "commandLineArgs": "/\\*(.|\\n)*?\\*/"
     },
-    "Line Comment": {
-      "commandName": "Project",
-      "commandLineArgs": "//.*$"
-    },
     "Testing": {
       "commandName": "Project",
       "commandLineArgs": "hello"
@@ -27,6 +23,10 @@
     "Demo.lex latin1": {
       "commandName": "Project",
       "commandLineArgs": "..\\..\\..\\demo.lex --graph ..\\..\\..\\demo.jpg --enc latin1"
+    },
+    "C Comment": {
+      "commandName": "Project",
+      "commandLineArgs": "(/\\*(.|\\n)*?\\*/)|(//.*$)"
     }
   }
 }

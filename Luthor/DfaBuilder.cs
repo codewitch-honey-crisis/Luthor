@@ -316,7 +316,7 @@ namespace Luthor
                     break;
 
                 case RegexAnchorExpression:
-                    node.SetNullable(true, nullableMap);   // ✅ FIX: Anchors are nullable/transparent
+                    node.SetNullable(true, nullableMap);   //  Anchors are nullable/transparent
                     node.GetFirstPos(firstPosMap).Add(node);
                     node.GetLastPos(lastPosMap).Add(node);
                     break;
@@ -361,10 +361,7 @@ namespace Luthor
                 case RegexConcatExpression concat:
                     if (concat.Left != null && concat.Right != null)
                     {
-                        // Debug output
-                        //var leftLast = string.Join(",", concat.Left.GetLastPos().Select(p => p.GetDfaPosition()));
-                        //var rightFirst = string.Join(",", concat.Right.GetFirstPos().Select(p => p.GetDfaPosition()));
-
+                      
                         foreach (var pos in concat.Left.GetLastPos(lastPosMap))
                         {
                             if (_followPos.ContainsKey(pos))

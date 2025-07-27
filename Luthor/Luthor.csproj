@@ -25,6 +25,7 @@
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <PackageTags>DFA;lexer;scanner;matching</PackageTags>
     <PackageId>Luthor-tool</PackageId>
+    <Version>1.1.0</Version>
   </PropertyGroup>
 
   <ItemGroup>

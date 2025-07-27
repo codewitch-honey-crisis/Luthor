@@ -145,6 +145,7 @@ namespace Luthor
         }
         static Dfa _Minimize(Dfa a, IProgress<int> progress)
         {
+            
             int prog = 0;
             progress?.Report(prog);
 
@@ -163,10 +164,29 @@ namespace Luthor
             progress?.Report(prog);
             // Make arrays for numbered states and effective alphabet.
             var cl = a.FillClosure();
+            var cleanAttributes = new DfaAttributes();
+
             var states = new Dfa[cl.Count];
             int number = 0;
             foreach (var q in cl)
             {
+                cleanAttributes.Clear();
+                // Only keep attributes that affect minimization
+                if (q.Attributes.ContainsKey("AcceptSymbol"))
+                {
+                    cleanAttributes["AcceptSymbol"] = q.Attributes["AcceptSymbol"];
+                }
+                if (q.Attributes.ContainsKey("AnchorMask"))
+                {
+                    cleanAttributes["AnchorMask"] = q.Attributes["AnchorMask"];
+                }
+
+                q.Attributes.Clear();
+                foreach (var attr in cleanAttributes)
+                {
+                    q.Attributes[attr.Key] = attr.Value;
+                }
+
                 states[number] = q;
                 q._MinimizationTag = number;
                 ++number;
@@ -233,12 +253,28 @@ namespace Luthor
             }
 
             // Find initial partition and reverse edges.
+            // Create a partition for each unique AcceptSymbol value
+            var acceptSymbolToPartition = new Dictionary<int, int>();
+            var partitionCount = 0;
+
+            // First pass: map each unique AcceptSymbol to a partition index
             foreach (var qq in states)
             {
-                int j = qq.IsAccept ? 0 : 1;
+                int acceptSymbol = qq.AcceptSymbol;
+                if (!acceptSymbolToPartition.ContainsKey(acceptSymbol))
+                {
+                    acceptSymbolToPartition[acceptSymbol] = partitionCount++;
+                    partition[partitionCount - 1] = new LinkedList<Dfa>();
+                }
+            }
 
-                partition[j]?.AddLast(qq);
-                block[qq._MinimizationTag] = j;
+            // Second pass: assign states to partitions
+            foreach (var qq in states)
+            {
+                int partitionIndex = acceptSymbolToPartition[qq.AcceptSymbol];
+                partition[partitionIndex].AddLast(qq);
+                block[qq._MinimizationTag] = partitionIndex;
+
                 for (int x = 0; x < sigma.Length; x++)
                 {
                     var y = sigma[x];
@@ -253,7 +289,7 @@ namespace Luthor
             }
 
             // Initialize active sets.
-            for (int j = 0; j <= 1; j++)
+            for (int j = 0; j < partitionCount; j++)  
             {
                 for (int x = 0; x < sigma.Length; x++)
                 {
@@ -275,22 +311,32 @@ namespace Luthor
             // Initialize pending.
             for (int x = 0; x < sigma.Length; x++)
             {
-                int a0 = active[0, x].Count;
-                int a1 = active[1, x].Count;
-                int j = a0 <= a1 ? 0 : 1;
-                pending.Enqueue(new KeyValuePair<int, int>(j, x));
-                pending2[x, j] = true;
+                // Find partition with minimum active count for this symbol
+                int minPartition = 0;
+                int minCount = active[0, x].Count;
+
+                for (int j = 1; j < partitionCount; j++)  // Check all partitions
+                {
+                    if (active[j, x].Count < minCount)
+                    {
+                        minCount = active[j, x].Count;
+                        minPartition = j;
+                    }
+                }
+
+                pending.Enqueue(new KeyValuePair<int, int>(minPartition, x));
+                pending2[x, minPartition] = true;
             }
 
             // Process pending until fixed point.
-            int k = 2;
+            int k = partitionCount;
             while (pending.Count > 0)
             {
                 KeyValuePair<int, int> ip = pending.Dequeue();
                 int p = ip.Key;
                 int x = ip.Value;
                 pending2[x, p] = false;
-
+                //Console.WriteLine($"Processing partition {p}, symbol {x}");
                 // Find states that need to be split off their blocks.
                 for (var m = active[p, x].First; m != null; m = m.Next)
                 {
@@ -318,6 +364,8 @@ namespace Luthor
                 {
                     if (splitblock[j]?.Count < partition[j]?.Count)
                     {
+                        //Console.WriteLine($"Splitting partition {j}: {splitblock[j]?.Count} states moving to new partition {k}");
+
                         LinkedList<Dfa> b1 = partition[j];
                         System.Diagnostics.Debug.Assert(b1 != null);
                         LinkedList<Dfa> b2 = partition[k];
@@ -326,6 +374,7 @@ namespace Luthor
                         System.Diagnostics.Debug.Assert(e != null);
                         foreach (var s in e)
                         {
+                            //Console.WriteLine($"  Moving state {s._MinimizationTag} (AcceptSymbol={s.AcceptSymbol}) from partition {j} to {k}");
                             b1.Remove(s);
                             b2.AddLast(s);
                             block[s._MinimizationTag] = k;
@@ -378,6 +427,7 @@ namespace Luthor
             }
             ++prog;
             if (progress != null) { progress.Report(prog); }
+
             // Make a new state for each equivalence class, set initial state.
             var newstates = new Dfa[k];
             for (int n = 0; n < newstates.Length; n++)
@@ -386,32 +436,46 @@ namespace Luthor
                 newstates[n] = s;
                 var pn = partition[n];
                 System.Diagnostics.Debug.Assert(pn != null);
+
+                var representative = pn.First.Value;
+                s.Attributes["AcceptSymbol"] = representative.AcceptSymbol;
+
                 foreach (var q in pn)
                 {
                     if (q == a)
                     {
                         a = s;
                     }
-                    s.Attributes["AcceptSymbol"] = q.AcceptSymbol;
-                    s._MinimizationTag = q._MinimizationTag; // Select representative.				
-                    q._MinimizationTag = n;
+                    // DON'T change _MinimizationTag yet!
                 }
                 ++prog;
                 progress?.Report(prog);
             }
 
-            // Build transitions and set acceptance.
-            foreach (var s in newstates)
+            // Build transitions FIRST (while _MinimizationTag still has original values)
+            for (int n = 0; n < newstates.Length; n++)
             {
-                var st = states[s._MinimizationTag];
-                s.Attributes["AcceptSymbol"] = st.AcceptSymbol;
-                foreach (var t in st._transitions)
+                var s = newstates[n];
+                var representative = partition[n].First.Value;
+
+                foreach (var t in representative._transitions)
                 {
-                    s._transitions.Add(new DfaTransition(newstates[t.To._MinimizationTag], t.Min, t.Max));
+                    // This now uses the original state indices in block[]
+                    s._transitions.Add(new DfaTransition(newstates[block[t.To._MinimizationTag]], t.Min, t.Max));
                 }
-                ++prog;
-                progress?.Report(prog);
             }
+
+            // NOW update _MinimizationTag values (after transitions are built)
+            for (int n = 0; n < newstates.Length; n++)
+            {
+                var pn = partition[n];
+                foreach (var q in pn)
+                {
+                    q._MinimizationTag = n;
+                }
+            }
+
+
             // remove dead transitions
             foreach (var ffa in a.FillClosure())
             {

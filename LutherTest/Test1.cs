@@ -56,19 +56,19 @@ namespace LutherTest
 
             // Test with "café" - should match "caf" lazily, then "é"
             var text1 = "café";
-            Assert.AreNotEqual(-1, TestDfa(transformedDfa, text1, encoding));
+            Assert.AreNotEqual(-1, TestDfaEnc(transformedDfa, text1, encoding));
 
             // Test with just "é" - empty lazy match, then "é"  
             var text2 = "é";
-            Assert.AreNotEqual(-1, TestDfa(transformedDfa, text2, encoding));
+            Assert.AreNotEqual(-1, TestDfaEnc(transformedDfa, text2, encoding));
 
             // Test with "grande é" - should match "grande " lazily, then "é"
             var text3 = "grande é";
-            Assert.AreNotEqual(-1, TestDfa(transformedDfa, text3, encoding));
+            Assert.AreNotEqual(-1, TestDfaEnc(transformedDfa, text3, encoding));
 
             // Test negative case - no "é" at end
             var text4 = "cafe"; // No accented e
-            Assert.AreEqual(-1, TestDfa(transformedDfa, text4, encoding));
+            Assert.AreEqual(-1, TestDfaEnc(transformedDfa, text4, encoding));
         }
 
         private List<int> GetAllTransitionBytes(Dfa dfa)
@@ -84,9 +84,108 @@ namespace LutherTest
             }
             return bytes.Distinct().ToList();
         }
+        [TestMethod]
+        public void TestMininization()
+        {
+            var ast = RegexExpression.Parse(@"(/\*(.|\n)*?\*/)|(//.*$)");
+            Assert.IsNotNull(ast);
+            var dfa = ast.ToDfa();
+            Assert.IsNotNull(dfa);
+            var minDfa = dfa.ToMinimized();
+            Assert.IsNotNull(minDfa);
+            var exprs = new(string Input, bool Expected)[]
+            {
+                (@"/* foo *** */",true),
+                (@"/* bar ***",false),
+                (@"/**/",true),
+                (@"/* / */",true),
+                (@"/* */ */  ",false)
+            };
+            foreach(var expr in exprs)
+            {
+                int acc;
+                Assert.AreEqual(acc=TestDfa(dfa, expr.Input), TestDfa(minDfa, expr.Input));
+                Assert.AreEqual(acc != -1, expr.Expected);
+            }
+            
+            
 
+        }
+        static int TestDfa(Dfa startState, string input)
+        {
+            var currentState = startState;
+            int position = 0;
+            bool atLineStart = true;
+            Console.WriteLine($"\n=== Testing '{input}' ===");
+            var codepoints = RegexExpression.ToUtf32(input).ToArray();
+            bool atLineEnd = codepoints.Length == 0 || (codepoints.Length == 1 && codepoints[0] == '\n');
 
-        static int TestDfa(Dfa startState, string input, Encoding encoding)
+            while (position <= codepoints.Length)
+            {
+                bool found = false;
+
+                //  check character transitions 
+                foreach (var transition in currentState.Transitions)
+                {
+
+                    if (position < codepoints.Length)
+                    {
+                        int codepoint = codepoints[position];
+                        if (codepoint >= transition.Min && codepoint <= transition.Max)
+                        {
+                            currentState = transition.To;
+                            position++;
+                            atLineEnd = (position == codepoints.Length) ||
+                                      (position < codepoints.Length && codepoints[position] == '\n');
+                            atLineStart = (codepoint == '\n');
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!found)
+                {
+                    if (position < codepoints.Length)
+                    {
+                        var cp = codepoints[position];
+                        var cpStr = cp <= 0xFFFF && !char.IsSurrogate((char)cp)
+                            ? $"'{char.ConvertFromUtf32(cp)}'"
+                            : $"U+{cp:X4}";
+                        Console.WriteLine($"REJECTED: No transition for {cpStr} at codepoint position {position}");
+                    }
+                    else
+                        Console.WriteLine($"REJECTED: No valid end transition");
+                    return -1;
+                }
+
+                // Check for acceptance with anchor validation
+                if (currentState.IsAccept)
+                {
+                    // Validate anchor conditions if present
+                    if (!CheckAnchorConditions(currentState, atLineStart, atLineEnd))
+                    {
+                        Console.WriteLine($"REJECTED: Anchor condition not met");
+                        return -1;
+                    }
+
+                    if (position < codepoints.Length - 1)
+                    {
+                        Console.WriteLine($"Rejected: Input remaining at codepoint position {position}");
+                        return -1;
+                    }
+                    else
+                    {
+                        Console.WriteLine($"ACCEPTED: {currentState.AcceptSymbol}");
+                        return currentState.AcceptSymbol;
+                    }
+                    
+                }
+            }
+            Console.WriteLine($"REJECTED: Not in accept state");
+            return -1;
+        }
+        static int TestDfaEnc(Dfa startState, string input, Encoding encoding)
         {
             var bytes = encoding.GetBytes(input);
             var currentState = startState;

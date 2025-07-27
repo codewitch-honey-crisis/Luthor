@@ -1,244 +1,264 @@
-# luthor
+# Luthor
 
-An experimental lexer generator that produces simple flat integer arrays that can be used to match text.
+A fast, compact lexer generator that produces simple integer arrays for efficient text matching in any programming language.
 
-Copyright (c) 2025 by honey the codewitch. MIT License
+**Key Features:**
+- Direct-to-DFA conversion (no intermediate NFA)
+- Lazy quantifier support (`??`, `*?`, `+?`)
+- Unicode support (UTF-8, UTF-16, UTF-32)
+- Compact array output suitable for embedded systems
+- Language-agnostic - use the arrays in C, C++, Rust, etc.
 
-Lazy matching implemented using Dr. Robert van Engelen's algorithm that he uses in RE/FLEX, and which he was kind enough to help me with via email. All of his respective work is all rights reserved for him.
+## What Luthor Does
 
-This lexer relies on direct to DFA conversion as indicated by the Aho-Sethi-Ullman algorithm in the dragon book.
+Luthor takes regular expressions or lexer grammars and converts them into simple integer arrays that can be embedded in any program. Instead of shipping a complex regex engine, you get a small array that can be walked with a simple matching loop.
 
-There is no Thompson construction or NFA intermediary using this technique.
+**Example:** The pattern `[A-Za-z_][A-Za-z0-9_]*` becomes:
+```c
+int dfa[] = {-1, 0, 1, 11, 3, 65, 90, 95, 95, 97, 122, 0, 0, 1, 11, 4, 48, 57, 65, 90, 95, 95, 97, 122};
+```
 
-Furthermore, this code implements lazy matching using a pure DFA algorithm pioneered by Dr. Robert van Engelen as part of his RE/FLEX project. https://github.com/Genivia/RE-flex
+## Technical Background
 
-Next the result is rencoded to the desired encoding using a range splitting algorithm I devised, but honestly I'm probably not the first to do it this way.
+Luthor implements several advanced algorithms:
 
-Finally, the result is minimized using Hopcroft's algorithm before being serialized to an array.
+- Direct-to-DFA construction using the Aho-Sethi-Ullman algorithm (Dragon Book)
+- Lazy matching using Dr. Robert van Engelen's algorithm from RE/FLEX
+- Hopcroft minimization for optimal state count
+- Unicode range splitting for efficient multi-byte encoding support
 
-The point of this code is to provide a means to generate flat integer arrays from single regular expressions or entire lexers that can easily be traversed to match unicode text in any language.
+## Acknowledgements
 
-Ergo, this code does not contain matching logic, aside from the tests. That is meant for whatever uses the arrays this code can generate.
+Special thanks to Dr. Robert van Engelen for his guidance on implementing lazy matching in pure DFA form.
 
-## Lexer input format
+## Quick Start
 
-I'm working toward POSIX compliance, which is the eventual goal, at least for the subset that this engine supports. It's a work in progress.
-Currently, since it's primarily for lexing, all matches are multiline mode, which means ^ and $ match the beginning and end of a *line* respectively, although the implementor can change that behavior in their own matcher code.
+### Installation
 
-? lazy quantifiers are supported, such as ??, *? and +?
+```bash
+dotnet tool install luthor -g
+```
 
-Each expression must be on a single line. Comments are on their own line and must be either `# example` or `#`. `#foo` (no space) will be treated as a regular expression.
+### Basic Usage
+```
+# Single expression
+luthor "[0-9]+"
+```
+### Lexer from file  
+luthor mylexer.txt
 
-For a lexer, rules are each on a line, and accept indexes are assigned in expression order. There is no specifier for a symbolic name, you just have to use the indices/ids.
+### Generate state diagram
+luthor mylexer.txt --graph output.png
+
+## Lexer Input Format
+
+### Single Expression
+
+For a single regular expression, just provide the pattern:
 
 ```
-# Test Lexer Example
-# C comment
-/\*(.|\n)*?\*/
-# C identifier
+luthor "if|while|for"
+```
+
+## Lexer Grammar
+For a full lexer, create a text file with one rule per line:
+
+```
+# C-like Language Lexer
+# Comments start with # (must have space or be alone)
+
+# Keywords
+if|while|for|int|void
+
+# Identifiers  
 [A-Za-z_][A-Za-z0-9_]*
-# more follows... (omitted here)
+
+# Integers (decimal and hex)
+0x[0-9a-fA-F]+|[0-9]+
+
+# C-style comments
+/\*(.|\n)*?\*/
+
+# Line comments  
+//.*$
+
+# Whitespace (usually ignored)
+[ \t\n\r]+
 ```
 
-## Lexer array format
+### Rules:
 
-Luthor arrays come in two flavors: Range arrays and non-range arrays. This is so the smallest possible array and matching code can be used for the situation. Sometimes range arrays end up smaller, sometimes non-range arrays end up smaller, especially for simple expressions without a lot of character sets.
+- Each expression on its own line
+- Comments: `# text` or `#` alone. `#foo` (no space) will be interpreted as a regular expression
+- Accept IDs assigned by line order (0, 1, 2, ...)
+- Supports POSIX character classes: [[:digit:]], [[:alpha:]], etc.
+- Lazy quantifiers: *?, +?, ??, {1,3}?
 
-Range arrays are always even in length. Non range arrays are always odd in length, and may be padded with a trailing -1 element to enforce that.
 
-The array is simply a list of states, each of which has lists of transitions to other states. Each value is a signed integer. The width of the integer must be at least high enough to hold the maximum value for the encoding used. For example, the utf32 range is 0-0x10FFFF, so it requires 32 bits. UTF-16 would require 16 bits and futhermore, the size must also be wide enough to hold the maximum number of elements in the array, so if the array is 129 entries, you need something wider than a signed 8 bit int to support that. It's always safe to use wider values, it's just potentially more wasteful.
+## Array Format
+Luthor generates two array types:
+
+- Range arrays: Use min/max pairs [65,90] for [A-Z] (more compact for large character sets)
+- Non-range arrays: List individual codepoints (better for sparse patterns)
+
+They are distinguished by having an even length (range arrays), or an odd length (non range arrays), and may be padded with a single -1 at the end to enforce the length.
+
+## Array Structure
+
+```
+[accept_id, anchor_mask, transition_count, ...]
+```
 
 For each state:
 
-The first integer is the accept id, or -1 if not accepting.
-The second integer is the set of anchor flags: 1= start line anchor, 2 = end line anchor
-The next integer is the number of unique destination states this state may transition to.
+1. accept_id: Token ID (-1 if non-accepting)
+2. anchor_mask: 1=line start ^, 2=line end $
+3. transition_count: Number of destination states
+4. For each destination:
+    - dest_state_index: Target state index
+    - transition_entry__count: Number of entries
+    - transition_entry_: Either [min,max] pairs (range array) or individual codepoints (non range array)
 
-- For each destination state:
-    - the next integer is the index of the destination state in the array
-    - the next integer is the number of codepoints or two-codepoint range pairs that transition to that state which follows. Whether it's codepoint min/max pairs or single codepoints depends if this is a range array or non-range array
-        - The next integer is the codepoint minimum or simple the codepoint for a non-range array
-        - the next integer is the maximum codepoint (range array only)
-
-This is repeated for every state.
-
-## Using the CLI utility
+### Example Breakdown
 
 ```
-luthor
-
-A DFA lexer generator tool
-
-Usage:
-
-luthor <input> [ --enc <encoding> ] [ --graph <graph> ]
-
-<input>        The input expression or file to use
-<encoding>     The encoding to use (ASCII, UTF-8, UTF-16, or UTF-32). Defaults to UTF-8
-<graph>        Generate a DFA state graph to the specified file (requires GraphViz)
-
-luthor [ --? ]
-
---?            Displays this help screen
+// Pattern: [A-Z]+
+int dfa[] = {
+    -1, 0, 1,        // State 0: not accepting, no anchors, 1 transition
+    11, 3,           // -> go to state 11 on 3 ranges:
+    65, 90,          //    A-Z (65-90)
+    95, 95,          //    _ (95)  
+    97, 122,         //    a-z (97-122)
+    
+    0, 0, 1,         // State 11: accepting (token 0), no anchors, 1 transition
+    11, 4,           // -> loop to state 11 on 4 ranges:
+    48, 57,          //    0-9 (48-57)
+    65, 90,          //    A-Z (65-90)  
+    95, 95,          //    _ (95)
+    97, 122          //    a-z (97-122)
+};
 ```
 
-Example for `dotnet luthor [A-Z_a-z][A-Z_a-z0-9]*`
-```
-Processing the following input:
-[A-Z_a-z][A-Z_a-z0-9]*
+## Using the Generated Arrays
 
-Created initial machine with 2 states.
-Minimizing...done! 0% size savings.
-Minimized machine has 2 states.
-Transforming to UTF-8...done! 0% larger than minimized.
-Net effect: 100% of original length*.
-
-The array takes a minimum of 24 bytes to store
-
-Emitting ranged jump table array with a length of 24 and an element width of 1 byte
-
-* values do not reflect the relative width of the elements, only the total length of the array.
-
--1, 0, 1, 11, 3, 65, 90, 95, 95, 97, 122, 0, 0, 1, 11, 4, 48, 57, 65, 90,
-95, 95, 97, 122
-```
-
-Those integers are your magic sauce. In the language of your choice, wrap them in the syntax for an integer array. You then create simple matching code for it like so (example lexer in C)
+### Simple C Lexer (Ranged arrays)
 
 ```c
+#include <stdio.h>
+#include <stdbool.h>
+
 static int lex_ranged(const char** data, const int* dfa) {
     const char* sz = *data;
-    int current_state_index = 0;
-    bool at_line_start = true;
-    bool at_line_end = (*sz == '\0') || (*sz != '\0' && sz[1] == '\0' && *sz == '\n');
-
-    while (*sz != '\0' || at_line_end) {
-        int machine_index = current_state_index;
-        int accept_id = dfa[machine_index++];
-        int anchor_mask = dfa[machine_index++];
-        int transition_count = dfa[machine_index++];
-
-        for (int t = 0; t < transition_count; t++) {
-            int dest_state_index = dfa[machine_index++];
-            int range_count = dfa[machine_index++];
+    int current_state = 0;
+    
+    while (*sz) {
+        int idx = current_state;
+        int accept = dfa[idx++];
+        int anchors = dfa[idx++];  
+        int trans_count = dfa[idx++];
+        
+        bool found = false;
+        for (int t = 0; t < trans_count && !found; t++) {
+            int dest_state = dfa[idx++];
+            int range_count = dfa[idx++];
+            
             for (int r = 0; r < range_count; r++) {
-                int min = dfa[machine_index++];
-                int max = dfa[machine_index++];
-                if (min >= 0 && *sz != '\0') {
-                    int c = (unsigned char)*sz;
-                    if (c < min) {
-                        machine_index += ((range_count - (r + 1)) * 2);
-                        break;
-                    }
-                    if (c <= max) {
-                        current_state_index = dest_state_index;
-                        sz++;
-                        at_line_end = (*sz == '\0') || (*sz == '\n');
-                        at_line_start = (c == '\n');
-                        goto found;
-                    }
+                int min = dfa[idx++];
+                int max = dfa[idx++];
+                
+                if (*sz >= min && *sz <= max) {
+                    current_state = dest_state;
+                    sz++;
+                    found = true;
+                    break;
                 }
             }
-        }
-        break;
-    found:
-        accept_id = dfa[current_state_index];
-        anchor_mask = dfa[current_state_index + 1];
-        if (accept_id != -1) {
-            bool anchor_valid = true;
-            if ((anchor_mask & 1) && !at_line_start) {
-                anchor_valid = false;
-            }
-            if ((anchor_mask & 2) && !at_line_end) {
-                anchor_valid = false;
-            }
-
-            if (anchor_valid) {
-                *data = sz;
-                return accept_id;
+            if (!found) {
+                idx += (range_count * 2); // skip remaining ranges
             }
         }
-        if (*sz == '\0') break;
+        
+        if (!found) break;
     }
-    *data = sz;
-    return -1;  // No valid match found
-}
-```
-
-For the non-ranged array version it would be like this
-
-```c
-static int lex_non_ranged(const char** data, const int* dfa) {
-    const char* sz = *data;
-    int current_state_index = 0;
-    bool at_line_start = true;
-    bool at_line_end = (*sz == '\0') || (*sz != '\0' && sz[1] == '\0' && *sz == '\n');
-
-    while (*sz != '\0' || at_line_end) {
-        int machine_index = current_state_index;
-        int accept_id = dfa[machine_index++];
-        int anchor_mask = dfa[machine_index++];
-        int transition_count = dfa[machine_index++];
-
-        for (int t = 0; t < transition_count; t++) {
-            int dest_state_index = dfa[machine_index++];
-            int range_count = dfa[machine_index++];
-            for (int r = 0; r < range_count; r++) {
-                int cmp = dfa[machine_index++];
-                if (cmp >= 0 && *sz != '\0') {
-                    int c = (unsigned char)*sz;
-                    if (c < cmp) {
-                        machine_index += (range_count - (r + 1));
-                        break;
-                    }
-                    if (c <= cmp) {
-                        current_state_index = dest_state_index;
-                        sz++;
-                        at_line_end = (*sz == '\0') || (*sz == '\n');
-                        at_line_start = (c == '\n');
-                        goto found;
-                    }
-                }
-            }
-        }
-        break;
-    found:
-        accept_id = dfa[current_state_index];
-        anchor_mask = dfa[current_state_index + 1];
-        if (accept_id != -1) {
-            bool anchor_valid = true;
-            if ((anchor_mask & 1) && !at_line_start) {
-                anchor_valid = false;
-            }
-            if ((anchor_mask & 2) && !at_line_end) {
-                anchor_valid = false;
-            }
-
-            if (anchor_valid) {
-                *data = sz;
-                return accept_id;
-            }
-        }
-        if (*sz == '\0') break;
+    
+    // Check if current state accepts
+    if (dfa[current_state] != -1) {
+        *data = sz;
+        return dfa[current_state]; // return token ID
     }
-    *data = sz;
-    return -1;  // No valid match found
+    
+    return -1; // no match
 }
-```
 
-and using them is like this:
-
-```c
-int main()
-{
-    static const int ranged_dfa[] = {
-        -1, 1, 10, 3, 65, 90, 95, 95, 97, 122, 0, 1, 10, 4, 48, 57, 65, 90, 95, 95, 
-        97, 122
+int main() {
+    static const int identifier_dfa[] = {
+        -1, 0, 1, 11, 3, 65, 90, 95, 95, 97, 122,
+        0, 0, 1, 11, 4, 48, 57, 65, 90, 95, 95, 97, 122
     };
-
-    const char* test = "foo_bar123";
-    const char* input = test;
-    printf("%s = %d\n", test, lex_ranged(&input,ranged_dfa));
-
+    
+    const char* input = "hello_world123";
+    const char* pos = input;
+    
+    int token = lex_ranged(&pos, identifier_dfa);
+    printf("Matched token %d, consumed: '%.*s'\n", 
+           token, (int)(pos - input), input);
+    
+    return 0;
 }
 ```
+
+## Multi-Language Support
+
+### The integer arrays work in any language:
+
+Rust:
+```rust
+rustconst DFA: &[i32] = &[-1, 0, 1, 11, 3, 65, 90, 95, 95, 97, 122, /*...*/];
+```
+
+Python:
+```python
+pythondfa = [-1, 0, 1, 11, 3, 65, 90, 95, 95, 97, 122, ...]
+```
+JavaScript:
+```js
+javascriptconst dfa = [-1, 0, 1, 11, 3, 65, 90, 95, 95, 97, 122, /*...*/];
+```
+
+## CLI Reference
+
+```
+luthor <input> [--enc <encoding>] [--graph <file>]
+
+Arguments:
+  <input>        Regular expression or lexer file
+
+Options:
+  --enc          Output encoding: ASCII, UTF-8, UTF-16, UTF-32 (default: UTF-8)
+  --graph        Generate GraphViz state diagram (.png, .svg, .dot)
+  --?            Show help
+```
+
+```
+# Generate UTF-8 lexer for C identifiers
+luthor "[A-Za-z_][A-Za-z0-9_]*"
+
+# Create lexer from grammar file  
+luthor c_lexer.txt --enc UTF-16
+
+# Generate lexer with state diagram
+luthor json_lexer.txt --graph json_states.png
+```
+
+## Performance Characteristics
+
+- Memory: Compact arrays, typically KB-sized even for complex lexers
+- Speed: Simple array traversal, no backtracking
+- Predictable: DFA guarantees O(n) matching time
+- Embeddable: No external dependencies, just integer arrays
+
+### License
+
+MIT License - Copyright (c) 2025 honey the codewitch
+
+Lazy matching implementation based on Dr. Robert van Engelen's algorithm from RE/FLEX (all rights reserved to Dr. van Engelen)

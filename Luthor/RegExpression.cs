@@ -490,28 +490,31 @@ namespace Luthor
                 {
                     line = line.Substring(0, line.Length - 1);
                 }
-                if (line.StartsWith("#") && (line.Length == 1 || char.IsWhiteSpace(line[1]))) // is comment
+                if (line.Length > 0)
                 {
-                    RegexComment comment = new RegexComment();
-                    comment.SetPosition(pos);
-                    if (line.Length > 1)
+                    if (line.StartsWith("#") && (line.Length == 1 || char.IsWhiteSpace(line[1]))) // is comment
                     {
-                        comment.Text = line.Substring(2);
+                        RegexComment comment = new RegexComment();
+                        comment.SetPosition(pos);
+                        if (line.Length > 1)
+                        {
+                            comment.Text = line.Substring(2);
+                        }
+                        comments.Add(comment);
                     }
-                    comments.Add(comment);
-                }
-                else // is expression
-                {
-                    sc.Codepoint = -2;
-                    sc.StartPosition = pos;
-                    sc.Position = pos - 1;
-                    sc.Input = line;
-                    expr = _ParseExpr(sc);
-                    if (expr != null)
+                    else // is expression
                     {
-                        expr.Comments.AddRange(comments);
-                        comments.Clear();
-                        result.Rules.Add(expr);
+                        sc.Codepoint = -2;
+                        sc.StartPosition = pos;
+                        sc.Position = pos - 1;
+                        sc.Input = line;
+                        expr = _ParseExpr(sc);
+                        if (expr != null)
+                        {
+                            expr.Comments.AddRange(comments);
+                            comments.Clear();
+                            result.Rules.Add(expr);
+                        }
                     }
                 }
             } while (pc.Codepoint != -1);

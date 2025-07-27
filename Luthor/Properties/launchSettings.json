@@ -23,6 +23,10 @@
     "Testing": {
       "commandName": "Project",
       "commandLineArgs": "hello"
+    },
+    "Demo.lex latin1": {
+      "commandName": "Project",
+      "commandLineArgs": "..\\..\\..\\demo.lex --graph ..\\..\\..\\demo.jpg --enc latin1"
     }
   }
 }

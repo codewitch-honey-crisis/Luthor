@@ -10,16 +10,20 @@ public class EncodingConverter : TypeConverter
     {
         if(value is string)
         {
-            var str = ((string)value).ToLowerInvariant().Replace("-","");
+            var ostr = (string)value;
+            var str = ostr.ToLowerInvariant().Replace("-","");
             switch(str)
             {
-                case "ascii": // can use utf-8 here because ascii is only 7-bit
+                case "ascii":
+                    return Encoding.ASCII;
                 case "utf8":
                     return Encoding.UTF8;
                 case "utf16":
                     return Encoding.Unicode;
                 case "utf32":
                     return Encoding.UTF32;
+                default:
+                    return Encoding.GetEncoding(ostr);
             }
         }
         return base.ConvertFrom(context, culture, value);
@@ -29,7 +33,7 @@ static class Program
 {
     [CmdArg(Ordinal = 0, Description = "The input expression or file to use",ElementName="input")]
     static string? Input = null;
-    [CmdArg(Name = "enc",Optional =true,ElementName ="encoding",ElementConverter ="EncodingConverter",Description ="The encoding to use (ASCII, UTF-8, UTF-16, or UTF-32). Defaults to UTF-8")]
+    [CmdArg(Name = "enc",Optional =true,ElementName ="encoding",ElementConverter ="EncodingConverter",Description ="The encoding to use (ASCII, UTF-8, UTF-16, or UTF-32, or a single byte encoding). Defaults to UTF-8")]
     static Encoding Enc = Encoding.UTF8;
     [CmdArg(Name = "graph", Optional = true, ElementName = "graph", Description = "Generate a DFA state graph to the specified file (requires GraphViz)")]
     static FileInfo Graph;
@@ -123,25 +127,27 @@ static class Program
             Console.Error.WriteLine($"Minimized machine has {dfa.FillClosure().Count} states.");
             //dfa.RenderToFile(@"..\..\..\dfa.jpg");
             var xformed = false;
-            if (Enc == Encoding.UTF8)
+            
+            
+            if (Enc != Encoding.UTF32)
             {
-                Console.Error.Write("Transforming to UTF-8...");
-                dfa = DfaUtf8Transformer.TransformToUtf8(dfa);
+                Console.Error.Write($"Transforming to {Enc.EncodingName}...");
+                dfa = DfaEncodingTransform.Transform(dfa, Enc);
                 xformed = true;
             }
-            else if (Enc == Encoding.Unicode)
-            {
-                Console.Error.Write("Transforming to UTF-16...");
-                dfa = DfaUtf16Transformer.TransformToUtf16(dfa);
-                xformed = true;
-            }
+            
             if (xformed)
             {
                 var tlen = dfa.GetArrayLength();
                 var minSize = (mlen * 100 / len);
                 var finalSize = (tlen * 100 / len);
                 var expansionCost = (tlen * 100 / mlen) - 100;
-                Console.Error.WriteLine($"done! {expansionCost}% larger than minimized.");
+                string sizeChange = expansionCost >= 0
+                    ? $"{expansionCost}% expansion cost"
+                    : $"{Math.Abs(expansionCost)}% size reduction";
+
+                Console.Error.WriteLine($"done! {sizeChange}.");
+             
                 Console.Error.WriteLine($"Net effect: {finalSize}% of original length*.");
 
             }

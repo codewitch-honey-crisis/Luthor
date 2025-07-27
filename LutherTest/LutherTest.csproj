@@ -12,6 +12,7 @@
     <Compile Include="..\Luthor\Dfa.Compute.cs" Link="Dfa.Compute.cs" />
     <Compile Include="..\Luthor\Dfa.cs" Link="Dfa.cs" />
     <Compile Include="..\Luthor\DfaBuilder.cs" Link="DfaBuilder.cs" />
+    <Compile Include="..\Luthor\DfaEncodingTransform.cs" Link="DfaEncodingTransform.cs" />
     <Compile Include="..\Luthor\DfaUtf16Transformer.cs" Link="DfaUtf16Transformer.cs" />
     <Compile Include="..\Luthor\DfaUtf8Transformer.cs" Link="DfaUtf8Transformer.cs" />
     <Compile Include="..\Luthor\RegexExpression.CharacterClasses.cs" Link="RegexExpression.CharacterClasses.cs" />

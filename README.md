@@ -232,15 +232,21 @@ const dfa = [-1, 0, 1, 11, 3, 65, 90, 95, 95, 97, 122, /*...*/];
 ## CLI Reference
 
 ```
-luthor <input> [--enc <encoding>] [--graph <file>]
+luthor
 
-Arguments:
-  <input>        Regular expression or lexer file
+A DFA lexer generator tool
 
-Options:
-  --enc          Output encoding: ASCII, UTF-8, UTF-16, UTF-32 (default: UTF-8)
-  --graph        Generate GraphViz state diagram (.png, .svg, .dot)
-  --?            Show help
+Usage:
+
+luthor <input> [ --enc <encoding> ] [ --graph <graph> ]
+
+<input>        The input expression or file to use
+<encoding>     The encoding to use (ASCII, UTF-8, UTF-16, or UTF-32, or a single byte encoding). Defaults to UTF-8
+<graph>        Generate a DFA state graph to the specified file (requires GraphViz)
+
+luthor [ --? ]
+
+--?            Displays this help screen
 ```
 
 ```

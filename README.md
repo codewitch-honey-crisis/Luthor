@@ -2,7 +2,7 @@
 
 An experimental lexer generator that produces simple flat integer arrays that can be used to match text.
 
-Copyright (c) 2025 by honey the codewitch
+Copyright (c) 2025 by honey the codewitch. MIT License
 
 Lazy matching implemented using Dr. Robert van Engelen's algorithm that he uses in RE/FLEX, and which he was kind enough to help me with via email. All of his respective work is all rights reserved for him.
 

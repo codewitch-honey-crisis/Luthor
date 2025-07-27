@@ -127,8 +127,11 @@ static class Program
             if (xformed)
             {
                 var tlen = dfa.GetArrayLength();
-                Console.Error.WriteLine($"done! {(tlen * 100 / len)- (mlen * 100 / len)}% expansion cost.");
-                Console.Error.WriteLine($"Transfoemd machine has {dfa.FillClosure().Count} states.");
+                var minSize = (mlen * 100 / len);
+                var finalSize = (tlen * 100 / len);
+                var expansionCost = (tlen * 100 / mlen) - 100;
+                Console.Error.WriteLine($"done! {expansionCost}% larger than minimized.");
+                Console.Error.WriteLine($"Net effect: {finalSize}% of original size.");
 
             }
             Console.Error.WriteLine();

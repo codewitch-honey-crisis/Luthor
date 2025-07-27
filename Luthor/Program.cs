@@ -59,6 +59,26 @@ static class Program
         }
         Console.WriteLine();
     }
+    private static int GetArrayWidth(int[] array)
+    {
+        int max = int.MinValue;
+        for (int i = 0; i < array.Length; i++)
+        {
+            if (array[i] > max)
+            {
+                max = array[i];
+            }
+        }
+        if (max <= sbyte.MaxValue)
+        {
+            return 1;
+        }
+        else if (max <= short.MaxValue)
+        {
+            return 2;
+        }
+        return 4;
+    }
     static void Main(string[] args)
     {
         // if you use the DFAS in this code the order must be
@@ -98,10 +118,10 @@ static class Program
             var array = dfa.ToArray();
             if (Dfa.IsRangeArray(array))
             {
-                Console.Error.WriteLine("Emitting ranged jump table array: ");
+                Console.Error.WriteLine($"Emitting ranged jump table array with an element width of {GetArrayWidth(array)}");
             } else
             {
-                Console.Error.WriteLine("Emitting non-ranged jump table array: ");
+                Console.Error.WriteLine($"Emitting non-ranged jump table array with an element width of {GetArrayWidth(array)}");
             }
             Console.Error.WriteLine();
             PrintArray(array);

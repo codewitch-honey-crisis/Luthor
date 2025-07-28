@@ -7,6 +7,367 @@ namespace LutherTest
     [TestClass]
     public sealed class Test1
     {
+        [TestMethod]
+        public void TestUtf8SurrogateRangeHandling()
+        {
+            Console.WriteLine("=== Testing UTF-8 Surrogate Range Handling ===");
+
+            // Test pattern that would include surrogate range if not handled properly
+            var pattern = @"[\uD000-\uE001]"; // Range that crosses surrogate boundary
+            var expr = RegexExpression.Parse(pattern);
+            expr.SetSynthesizedPositions();
+
+            var originalDfa = expr.ToDfa();
+            Assert.IsNotNull(originalDfa);
+
+            // This should not crash - the transform should skip surrogate codepoints
+            var utf8Dfa = DfaUtf8Transformer.TransformToUtf8(originalDfa);
+            Assert.IsNotNull(utf8Dfa);
+
+            Console.WriteLine($"Original DFA: {originalDfa.FillClosure().Count} states");
+            Console.WriteLine($"UTF-8 DFA: {utf8Dfa.FillClosure().Count} states");
+
+            // Test valid characters that should match (before and after surrogate range)
+            var testInputs = new[]
+            {
+        "\uD7FF", // Last character before surrogates
+        "\uE000", // First character after surrogates  
+        "\uE001"  // Character after surrogates
+    };
+
+            foreach (var input in testInputs)
+            {
+                var result = TestUtf8Dfa(utf8Dfa, input);
+                Console.WriteLine($"Input '{input}' (U+{(int)input[0]:X4}): {(result != -1 ? "MATCH" : "NO MATCH")}");
+                // These should match since they're in the valid ranges
+                Assert.AreNotEqual(-1, result, $"Expected match for {input}");
+            }
+        }
+
+        [TestMethod]
+        public void TestUtf8CrossBoundaryRanges()
+        {
+            var chars = new[] { "ÿ", "ခ" }; // U+00FF and U+1001
+            foreach (var testChar in chars)
+            {
+                var utf8Bytes = Encoding.UTF8.GetBytes(testChar);
+                Console.WriteLine($"UTF-8 bytes for '{testChar}' (U+{(int)testChar[0]:X4}): [{string.Join(", ", utf8Bytes.Select(b => $"0x{b:X2}"))}]");
+            }
+
+            // Test ranges that cross UTF-8 encoding length boundaries
+            var testCases = new[]
+            {
+        (@"[~-‚]", "Test 1-2 byte boundary (0x7E-0x82)", new[] { "~", "\u007F", "‚" }),
+        (@"[ÿ-ခ]", "Test 2-3 byte boundary (0xFF-0x1000)", new[] { "ÿ", "Ā", "ခ" }),
+        (@"[A-🙂]", "Test large range 1-4 bytes (0x41-0x1F642)", new[] { "A", "á", "漢", "🙂" })
+    };
+
+            foreach (var (pattern, description, inputs) in testCases)
+            {
+                Console.WriteLine($"\n{description}: {pattern}");
+
+                var expr = RegexExpression.Parse(pattern);
+                expr.SetSynthesizedPositions();
+
+                var originalDfa = expr.ToDfa();
+                var utf8Dfa = DfaUtf8Transformer.TransformToUtf8(originalDfa);
+
+                Console.WriteLine($"States: {originalDfa.FillClosure().Count} -> {utf8Dfa.FillClosure().Count}");
+
+                foreach (var input in inputs)
+                {
+                    var originalResult = TestUtf32Dfa(originalDfa, input);
+                    var utf8Result = TestUtf8Dfa(utf8Dfa, input);
+
+                    Console.WriteLine($"  '{input}': Original={originalResult}, UTF8={utf8Result}");
+                    Assert.AreEqual(originalResult, utf8Result, $"Results should match for input '{input}'");
+                }
+            }
+        }
+
+        [TestMethod]
+        public void TestUtf16SurrogateRangeHandling()
+        {
+            Console.WriteLine("=== Testing UTF-16 Surrogate Range Handling ===");
+
+            // Test pattern that would include surrogate range
+            var pattern = @"[\uD000-\uE000]"; // Range that crosses surrogate boundary
+            var expr = RegexExpression.Parse(pattern);
+            expr.SetSynthesizedPositions();
+
+            var originalDfa = expr.ToDfa();
+            Assert.IsNotNull(originalDfa);
+
+            // This should not crash and should properly handle surrogates
+            var utf16Dfa = DfaUtf16Transformer.TransformToUtf16(originalDfa);
+            Assert.IsNotNull(utf16Dfa);
+
+            Console.WriteLine($"Original DFA: {originalDfa.FillClosure().Count} states");
+            Console.WriteLine($"UTF-16 DFA: {utf16Dfa.FillClosure().Count} states");
+
+            // Test valid characters (should skip surrogate range)
+            var testInputs = new[]
+            {
+        "\uD7FF", // Last character before surrogates
+        "\uE000", // First character after surrogates
+        "\uE001"  // Character after surrogates
+    };
+
+            foreach (var input in testInputs)
+            {
+                var originalResult = TestUtf32Dfa(originalDfa, input);
+                var utf16Result = TestUtf16Dfa(utf16Dfa, input);
+
+                Console.WriteLine($"Input '{input}' (U+{(int)input[0]:X4}): Original={originalResult}, UTF16={utf16Result}");
+                Assert.AreEqual(originalResult, utf16Result, $"Results should match for input '{input}'");
+            }
+        }
+
+        [TestMethod]
+        public void TestUtf16CrossBmpBoundary()
+        {
+            Console.WriteLine("=== Testing UTF-16 Cross-BMP Boundary ===");
+
+            // Test range that crosses BMP boundary (requires surrogate pairs)
+            var pattern = @"[A-😂]"; // 0x41 to 0x1F602 - crosses 0xFFFF boundary
+            var expr = RegexExpression.Parse(pattern);
+            expr.SetSynthesizedPositions();
+
+            var originalDfa = expr.ToDfa();
+            var utf16Dfa = DfaUtf16Transformer.TransformToUtf16(originalDfa);
+
+            Console.WriteLine($"Pattern: {pattern}");
+            Console.WriteLine($"States: {originalDfa.FillClosure().Count} -> {utf16Dfa.FillClosure().Count}");
+
+            // Test inputs from both BMP and supplementary planes
+            var testInputs = new[]
+            {
+        "A",        // Basic ASCII
+        "ÿ",        // End of Latin-1
+        "\uFFFF",   // Last BMP character
+        "😀",       // First emoji in range (0x1F600)
+        "😂"        // Target emoji (0x1F602)
+    };
+
+            foreach (var input in testInputs)
+            {
+                var originalResult = TestUtf32Dfa(originalDfa, input);
+                var utf16Result = TestUtf16Dfa(utf16Dfa, input);
+
+                Console.WriteLine($"Input '{input}': Original={originalResult}, UTF16={utf16Result}");
+                Assert.AreEqual(originalResult, utf16Result, $"Results should match for input '{input}'");
+            }
+        }
+
+        [TestMethod]
+        public void TestUtf16SupplementaryCharacterRanges()
+        {
+            Console.WriteLine("=== Testing UTF-16 Supplementary Character Ranges ===");
+
+            // Test range entirely in supplementary plane that spans multiple high surrogates
+            //var pattern = @"[\U0001F600-\U0001F600]"; // 0x1F600 to 0x1F914 - spans multiple high surrogates
+            var pattern = @"[\U0001F600-\U0001F914]";
+            //var pattern = @"[\U0001F600-\U0001F600]";
+            var expr = RegexExpression.Parse(pattern);
+            Console.WriteLine("Displaying AST");
+            expr.Visit((parent, expr, childIndex, level) =>
+            {
+                Console.WriteLine($"{new string(' ', level * 2)}{expr.GetType().Name}\t{expr.ToString()}");
+                return true;
+            });
+            var charset = (RegexCharsetExpression)expr;
+            var ranges = charset.GetRanges();
+            Console.WriteLine("Raw charset ranges:");
+            foreach (var range in ranges)
+            {
+                Console.WriteLine($"  U+{range.Min:X4}-U+{range.Max:X4}");
+                if (range.Min >= 0xD800 && range.Max <= 0xDFFF)
+                    Console.WriteLine($"    ^^^ SURROGATE RANGE!");
+            }
+            
+            var originalDfa = expr.ToDfa();
+            var utf16Dfa = DfaUtf16Transformer.TransformToUtf16(originalDfa);
+
+            Console.WriteLine($"Pattern: {pattern}");
+            Console.WriteLine($"States: {originalDfa.FillClosure().Count} -> {utf16Dfa.FillClosure().Count}");
+
+            // Test various emoji in the range
+            var testInputs = new[]
+            {
+        "😀",  // 0x1F600 - start of range
+        "😏",  // 0x1F60F - within range
+        "🙂",  // 0x1F642 - within range  
+        "🤔",  // 0x1F914 - end of range
+        "🤕"   // 0x1F915 - just outside range
+    };
+
+            foreach (var input in testInputs)
+            {
+                var codepoints = RegexExpression.ToUtf32(input).ToArray();
+                var originalResult = TestUtf32Dfa(originalDfa, input);
+                var utf16Result = TestUtf16Dfa(utf16Dfa, input);
+
+                var shouldMatch = input != "🤕"; // All except the last should match
+                Console.WriteLine($"Input '{input}': Original={originalResult}, UTF16={utf16Result}, Expected={shouldMatch}");
+
+                Assert.AreEqual(originalResult, utf16Result, $"Results should match for input '{input}'");
+
+                if (shouldMatch)
+                {
+                    Assert.AreNotEqual(-1, utf16Result, $"Expected match for '{input}'");
+                }
+                else
+                {
+                    Assert.AreEqual(-1, utf16Result, $"Expected no match for '{input}'");
+                }
+            }
+        }
+
+        [TestMethod]
+        public void TestUtf8LargeRangeSampling()
+        {
+            Console.WriteLine("=== Testing UTF-8 Large Range Sampling ===");
+
+            // Test a very large range that requires careful sampling to avoid surrogates
+            var pattern = @"[\u0100-\uFFFE]"; // Large range that includes surrogate area
+            var expr = RegexExpression.Parse(pattern);
+            expr.SetSynthesizedPositions();
+
+            var originalDfa = expr.ToDfa();
+
+            // This should not crash despite the large range including surrogates
+            var utf8Dfa = DfaUtf8Transformer.TransformToUtf8(originalDfa);
+            Assert.IsNotNull(utf8Dfa);
+
+            Console.WriteLine($"Large range pattern: {pattern}");
+            Console.WriteLine($"States: {originalDfa.FillClosure().Count} -> {utf8Dfa.FillClosure().Count}");
+
+            // Test characters from different parts of the range
+            var testInputs = new[]
+            {
+        "\u0100", // Start of range (Latin Extended-A)
+        "\u0800", // 3-byte UTF-8 boundary
+        "\uD7FF", // Just before surrogates (should match)
+        "\uE000", // Just after surrogates (should match)
+        "\uFFFE"  // End of range
+    };
+
+            foreach (var input in testInputs)
+            {
+                var originalResult = TestUtf32Dfa(originalDfa, input);
+                var utf8Result = TestUtf8Dfa(utf8Dfa, input);
+
+                Console.WriteLine($"Input '{input}' (U+{(int)input[0]:X4}): Original={originalResult}, UTF8={utf8Result}");
+                Assert.AreEqual(originalResult, utf8Result, $"Results should match for input '{input}'");
+                Assert.AreNotEqual(-1, utf8Result, $"Expected match for '{input}' in large range");
+            }
+        }
+
+        [TestMethod]
+        public void TestEncodingTransformationEdgeCases()
+        {
+            Console.WriteLine("=== Testing Encoding Transformation Edge Cases ===");
+
+            var edgeCases = new[]
+            {
+        // UTF-8 boundary cases
+        (@"[\u007F-\u0080]", "ASCII-to-2byte boundary"),
+        (@"[\u07FF-\u0800]", "2byte-to-3byte boundary"),
+        (@"[\uFFFF-\U00010000]", "3byte-to-4byte boundary"),
+        
+        // UTF-16 boundary cases  
+        (@"[\uFFFE-\U00010001]", "BMP-to-supplementary boundary"),
+        (@"[\U0001F600-\U0001F6FF]", "Emoji block (supplementary)")
+    };
+
+            foreach (var (pattern, description) in edgeCases)
+            {
+                Console.WriteLine($"\n{description}: {pattern}");
+
+                try
+                {
+                    var expr = RegexExpression.Parse(pattern);
+                    expr.SetSynthesizedPositions();
+
+                    var originalDfa = expr.ToDfa();
+
+                    // Both transformations should succeed without exceptions
+                    var utf8Dfa = DfaUtf8Transformer.TransformToUtf8(originalDfa);
+                    var utf16Dfa = DfaUtf16Transformer.TransformToUtf16(originalDfa);
+
+                    Assert.IsNotNull(utf8Dfa, "UTF-8 transformation should succeed");
+                    Assert.IsNotNull(utf16Dfa, "UTF-16 transformation should succeed");
+
+                    Console.WriteLine($"  ✓ Transformations successful");
+                    Console.WriteLine($"  States: {originalDfa.FillClosure().Count} -> UTF8:{utf8Dfa.FillClosure().Count}, UTF16:{utf16Dfa.FillClosure().Count}");
+                }
+                catch (Exception ex)
+                {
+                    Assert.Fail($"Transformation failed for {description}: {ex.Message}");
+                }
+            }
+        }
+
+        [TestMethod]
+        public void TestSurrogateHandlingConsistency()
+        {
+            Console.WriteLine("=== Testing Surrogate Handling Consistency ===");
+
+            var test = "퀀";
+            var utf8Bytes = Encoding.UTF8.GetBytes(test);
+            Console.WriteLine($"UTF-8 bytes for '{test}': [{string.Join(", ", utf8Bytes.Select(b => $"0x{b:X2}"))}]");
+
+            // Test that both transformations handle surrogate ranges consistently
+            var pattern = @"[\uD000-\uE000]"; // Range spanning surrogates
+            var expr = RegexExpression.Parse(pattern);
+            expr.SetSynthesizedPositions();
+
+            var originalDfa = expr.ToDfa();
+            var utf8Dfa = DfaUtf8Transformer.TransformToUtf8(originalDfa);
+            var utf16Dfa = DfaUtf16Transformer.TransformToUtf16(originalDfa);
+
+            Console.WriteLine("UTF-8 DFA state machine:");
+            var utf8States = utf8Dfa.FillClosure();
+            for (int i = 0; i < utf8States.Count; i++)
+            {
+                var state = utf8States[i];
+                var isAccept = state.IsAccept ? " (ACCEPT)" : "";
+                var isIntermediate = state.Attributes.ContainsKey("IsIntermediate") ? " (INTERMEDIATE)" : "";
+                Console.WriteLine($"State {i}{isAccept}{isIntermediate}:");
+
+                foreach (var transition in state.Transitions)
+                {
+                    var range = transition.Min == transition.Max
+                        ? $"0x{transition.Min:X2}"
+                        : $"0x{transition.Min:X2}-0x{transition.Max:X2}";
+                    Console.WriteLine($"  {range} -> State {utf8States.IndexOf(transition.To)}");
+                }
+            }
+            // Test the same inputs against all three DFAs
+            var testInputs = new[]
+            {
+        "\uD000", // Start of problematic range
+        "\uD7FF", // Last before surrogates
+        "\uE000", // First after surrogates
+        "\uE001"  // After surrogates
+    };
+
+            Console.WriteLine("Testing consistency across transformations:");
+            foreach (var input in testInputs)
+            {
+                var originalResult = TestUtf32Dfa(originalDfa, input);
+                var utf8Result = TestUtf8Dfa(utf8Dfa, input);
+                var utf16Result = TestUtf16Dfa(utf16Dfa, input);
+
+                Console.WriteLine($"Input '{input}' (U+{(int)input[0]:X4}):");
+                Console.WriteLine($"  Original: {originalResult}, UTF8: {utf8Result}, UTF16: {utf16Result}");
+
+                // All transformations should give the same result
+                Assert.AreEqual(originalResult, utf8Result, $"UTF-8 result should match original for '{input}'");
+                Assert.AreEqual(originalResult, utf16Result, $"UTF-16 result should match original for '{input}'");
+                Assert.AreEqual(utf8Result, utf16Result, $"UTF-8 and UTF-16 results should match for '{input}'");
+            }
+        }
         public static void Contains(object value, System.Collections.IEnumerable collection)
         {
             var found = false;
@@ -1245,7 +1606,7 @@ namespace LutherTest
 
                 foreach (var transition in currentState.Transitions)
                 {
-                    if (position < input.Length)
+                    if (position < bytes.Length)
                     {
                         byte c = bytes[position];
                         if (c >= transition.Min && c <= transition.Max)
@@ -1263,8 +1624,8 @@ namespace LutherTest
 
                 if (!found)
                 {
-                    if (position < input.Length)
-                        Console.WriteLine($"REJECTED: No transition for '{input[position]}' at position {position}");
+                    if (position < bytes.Length)
+                        Console.WriteLine($"REJECTED: No transition for '{bytes[position]}' at position {position}");
                     else
                         Console.WriteLine($"REJECTED: No valid end transition");
                     return -1;
@@ -1280,7 +1641,7 @@ namespace LutherTest
                         return -1;
                     }
 
-                    if (position < input.Length - 1)
+                    if (position < bytes.Length - 1)
                     {
                         Console.WriteLine($"Rejected: Input remaining at codepoint position {position}");
                         return -1;

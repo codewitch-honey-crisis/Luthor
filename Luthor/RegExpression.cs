@@ -323,9 +323,8 @@ namespace Luthor
                     chh = ch;
                     continue;
                 }
-                else
-                    chh = -1;
-                if (-1 != chh)
+
+                if (-1 != chh)  // ← Check BEFORE resetting chh
                 {
                     if (!char.IsLowSurrogate(ch))
                         throw new IOException("Unterminated Unicode surrogate pair found in string.");
@@ -333,6 +332,8 @@ namespace Luthor
                     chh = -1;
                     continue;
                 }
+
+                chh = -1;  // ← Reset after the surrogate pair check
                 yield return ch;
             }
         }
@@ -548,8 +549,8 @@ namespace Luthor
         {
             RegexExpression? result = null, next = null;
             int ich;
-            bool cap;
-            string nmgrp = null;
+           
+            string? nmgrp = null;
             pc.EnsureStarted();
             var position = pc.Position;
             while (true)
@@ -676,7 +677,6 @@ namespace Luthor
                     case '(':
                         pc.Advance();
                         pc.Expecting();
-                        cap = true;
                         if (pc.Codepoint == '?')
                         {
                             pc.Advance();
@@ -684,7 +684,6 @@ namespace Luthor
                             {
                                 pc.Advance();
                                 pc.Expecting();
-                                cap = false;
                             }
                             else
                             {
@@ -788,7 +787,7 @@ namespace Luthor
         {
             pc.EnsureStarted();
             var result = new List<RegexCharsetEntry>();
-            RegexCharsetEntry next = null;
+            RegexCharsetEntry? next = null;
             bool readDash = false;
             while (-1 != pc.Codepoint && ']' != pc.Codepoint)
             {
@@ -816,7 +815,9 @@ namespace Luthor
                         next = null;
                         break;
                     case '\\':
+                        Console.WriteLine($"DEBUG: Found backslash, next char will be: {(char)pc.Codepoint}");
                         pc.Advance();
+                        Console.WriteLine($"DEBUG: After advance, parsing char: {(char)pc.Codepoint} (code: {pc.Codepoint})");
                         pc.Expecting();
                         switch (pc.Codepoint)
                         {
@@ -839,7 +840,24 @@ namespace Luthor
                                 _ParseCharClassEscape(pc, "^space", result, ref next, ref readDash);
                                 break;
                             case 'u':
-                                _ParseCharClassEscape(pc, "upper", result, ref next, ref readDash);
+                            case 'U':
+                                Console.WriteLine("DEBUG: Entering U case");
+                                var ech = _ParseRangeEscapePart(pc);
+                                Console.WriteLine($"DEBUG: _ParseRangeEscapePart returned: {ech} (U+{ech:X4})");
+                                Console.WriteLine($"DEBUG: After parse, cursor at: {(pc.Codepoint >= 0 ? ((char)pc.Codepoint).ToString() : "EOF")} (code: {pc.Codepoint})");
+                                if (null == next)
+                                    next = new RegexCharsetCharEntry(ech);
+                                else if (readDash)
+                                {
+                                    result.Add(new RegexCharsetRangeEntry(((RegexCharsetCharEntry)next).Codepoint, ech));
+                                    next = null;
+                                    readDash = false;
+                                }
+                                else
+                                {
+                                    result.Add(next);
+                                    next = new RegexCharsetCharEntry(ech);
+                                }
                                 break;
                             case 'w':
                                 _ParseCharClassEscape(pc, "word", result, ref next, ref readDash);
@@ -1304,6 +1322,7 @@ namespace Luthor
                         return unchecked(b);
                     b <<= 4;
                     b |= _FromHexChar(pc.Codepoint);
+                    pc.Advance();
                     return unchecked(b);
                 case 'u':
                     if (-1 == pc.Advance())
@@ -1321,7 +1340,42 @@ namespace Luthor
                     if (-1 == pc.Advance())
                         return unchecked(u);
                     u |= _FromHexChar(pc.Codepoint);
+                    pc.Advance();
                     return unchecked(u);
+                case 'U':
+                    if (-1 == pc.Advance())
+                        return 'U';
+                    uint U = _FromHexChar(pc.Codepoint);
+                    U <<= 4;
+                    if (-1 == pc.Advance())
+                        return unchecked((int)U);
+                    U |= _FromHexChar(pc.Codepoint);
+                    U <<= 4;
+                    if (-1 == pc.Advance())
+                        return unchecked((int)U);
+                    U |= _FromHexChar(pc.Codepoint);
+                    U <<= 4;
+                    if (-1 == pc.Advance())
+                        return unchecked((int)U);
+                    U |= _FromHexChar(pc.Codepoint);
+                    U <<= 4;
+                    if (-1 == pc.Advance())
+                        return unchecked((int)U);
+                    U |= _FromHexChar(pc.Codepoint);
+                    U <<= 4;
+                    if (-1 == pc.Advance())
+                        return unchecked((int)U);
+                    U |= _FromHexChar(pc.Codepoint);
+                    U <<= 4;
+                    if (-1 == pc.Advance())
+                        return unchecked((int)U);
+                    U |= _FromHexChar(pc.Codepoint);
+                    U <<= 4;
+                    if (-1 == pc.Advance())
+                        return unchecked((int)U);
+                    U |= _FromHexChar(pc.Codepoint);
+                    pc.Advance();
+                    return unchecked((int)U);
                 default:
                     int i = pc.Codepoint;
                     pc.Advance();
@@ -1365,6 +1419,7 @@ namespace Luthor
                         return unchecked(b);
                     b <<= 4;
                     b |= _FromHexChar(pc.Codepoint);
+                    pc.Advance();
                     return unchecked(b);
                 case 'u':
                     if (-1 == pc.Advance())
@@ -1382,8 +1437,44 @@ namespace Luthor
                     if (-1 == pc.Advance())
                         return unchecked(u);
                     u |= _FromHexChar(pc.Codepoint);
+                    pc.Advance();
                     return unchecked(u);
+                case 'U':
+                    if (-1 == pc.Advance())
+                        return 'U';
+                    uint U = _FromHexChar(pc.Codepoint);
+                    U <<= 4;
+                    if (-1 == pc.Advance())
+                        return unchecked((int)U);
+                    U |= _FromHexChar(pc.Codepoint);
+                    U <<= 4;
+                    if (-1 == pc.Advance())
+                        return unchecked((int)U);
+                    U |= _FromHexChar(pc.Codepoint);
+                    U <<= 4;
+                    if (-1 == pc.Advance())
+                        return unchecked((int)U);
+                    U |= _FromHexChar(pc.Codepoint);
+                    U <<= 4;
+                    if (-1 == pc.Advance())
+                        return unchecked((int)U);
+                    U |= _FromHexChar(pc.Codepoint);
+                    U <<= 4;
+                    if (-1 == pc.Advance())
+                        return unchecked((int)U);
+                    U |= _FromHexChar(pc.Codepoint);
+                    U <<= 4;
+                    if (-1 == pc.Advance())
+                        return unchecked((int)U);
+                    U |= _FromHexChar(pc.Codepoint);
+                    U <<= 4;
+                    if (-1 == pc.Advance())
+                        return unchecked((int)U);
+                    U |= _FromHexChar(pc.Codepoint);
+                    pc.Advance();
+                    return unchecked((int)U);
                 default:
+
                     int i = pc.Codepoint;
                     pc.Advance();
                     return i;

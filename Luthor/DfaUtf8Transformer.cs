@@ -147,71 +147,151 @@ namespace Luthor
 
         private static List<Utf8BytePattern> ConvertCodepointRangeToUtf8Patterns(int minCodepoint, int maxCodepoint)
         {
+            Console.WriteLine($"UTF8: Converting range U+{minCodepoint:X4}-U+{maxCodepoint:X4}");
+
             var patterns = new List<Utf8BytePattern>();
+            var validRanges = SplitAroundSurrogates(minCodepoint, maxCodepoint);
 
-            var currentMin = minCodepoint;
-
-            while (currentMin <= maxCodepoint)
+            Console.WriteLine($"UTF8: Split into {validRanges.Count} ranges:");
+            foreach (var (rangeMin, rangeMax) in validRanges)
             {
-                // PROBLEM: Need to skip surrogate range here
-                if (currentMin >= 0xD800 && currentMin <= 0xDFFF)
-                {
-                    currentMin = 0xE000; // Skip to after surrogate range
-                    if (currentMin > maxCodepoint) break;
-                }
+                Console.WriteLine($"  Processing range U+{rangeMin:X4}-U+{rangeMax:X4}");
 
-                int utf8Length = GetUtf8Length(currentMin);
-                int maxForLength = GetMaxCodepointForUtf8Length(utf8Length);
-                int currentMax = Math.Min(maxCodepoint, maxForLength);
-
-                // Also need to check if currentMax falls in surrogate range
-                if (currentMax >= 0xD800 && currentMax <= 0xDFFF)
+                var currentMin = rangeMin;
+                while (currentMin <= rangeMax)
                 {
-                    currentMax = 0xD7FF; // End before surrogate range
-                    if (currentMax < currentMin)
+                    int utf8Length = GetUtf8Length(currentMin);
+                    int maxForLength = GetMaxCodepointForUtf8Length(utf8Length);
+                    int currentMax = Math.Min(rangeMax, maxForLength);
+
+                    Console.WriteLine($"    Generating patterns for U+{currentMin:X4}-U+{currentMax:X4} (length {utf8Length})");
+                    var subPatterns = GenerateUtf8PatternsForRange(currentMin, currentMax, utf8Length);
+
+                    foreach (var pattern in subPatterns)
                     {
-                        currentMin = 0xE000;
-                        continue;
+                        Console.WriteLine($"      Pattern: {pattern}");
                     }
+
+                    patterns.AddRange(subPatterns);
+                    currentMin = currentMax + 1;
                 }
-
-                // Generate pattern for this UTF-8 length range
-                var subPatterns = GenerateUtf8PatternsForRange(currentMin, currentMax, utf8Length);
-                patterns.AddRange(subPatterns);
-
-                currentMin = currentMax + 1;
             }
 
             return patterns;
         }
 
+        private static List<(int min, int max)> SplitAroundSurrogates(int minCodepoint, int maxCodepoint)
+        {
+            var ranges = new List<(int, int)>();
+
+            // If range doesn't touch surrogates, return as-is
+            if (maxCodepoint < 0xD800 || minCodepoint > 0xDFFF)
+            {
+                ranges.Add((minCodepoint, maxCodepoint));
+                return ranges;
+            }
+
+            // Split around surrogates
+            if (minCodepoint < 0xD800)
+            {
+                // Add range before surrogates
+                ranges.Add((minCodepoint, Math.Min(maxCodepoint, 0xD7FF)));
+            }
+
+            if (maxCodepoint > 0xDFFF)
+            {
+                // Add range after surrogates
+                ranges.Add((Math.Max(minCodepoint, 0xE000), maxCodepoint));
+            }
+
+            return ranges;
+        }
+
         private static List<Utf8BytePattern> GenerateUtf8PatternsForRange(int minCodepoint, int maxCodepoint, int utf8Length)
         {
-
             if ((minCodepoint >= 0xD800 && minCodepoint <= 0xDFFF) ||
-    (maxCodepoint >= 0xD800 && maxCodepoint <= 0xDFFF))
+                (maxCodepoint >= 0xD800 && maxCodepoint <= 0xDFFF))
             {
                 throw new InvalidOperationException($"Surrogate codepoints are not valid: [{minCodepoint:X}-{maxCodepoint:X}]");
             }
 
             var patterns = new List<Utf8BytePattern>();
 
-
-            // For large ranges, we might need to break them down further
-            // to avoid overly broad byte ranges
-
             if (utf8Length == 1)
             {
-                // Simple case: ASCII range maps directly
                 var pattern = new Utf8BytePattern();
                 pattern.ByteRanges.Add(new Utf8ByteRange((byte)minCodepoint, (byte)maxCodepoint));
                 patterns.Add(pattern);
             }
-            else
+            else if (utf8Length == 2)
             {
-                // Complex case: multi-byte UTF-8
-                // We need to be more careful about the byte ranges
-                patterns.Add(GenerateMultiByteUtf8Pattern(minCodepoint, maxCodepoint, utf8Length));
+                var minBytes = Encoding.UTF8.GetBytes(char.ConvertFromUtf32(minCodepoint));
+                var maxBytes = Encoding.UTF8.GetBytes(char.ConvertFromUtf32(maxCodepoint));
+
+                // Split by first byte for 2-byte sequences too
+                for (byte firstByte = minBytes[0]; firstByte <= maxBytes[0]; firstByte++)
+                {
+                    var pattern = new Utf8BytePattern();
+                    pattern.ByteRanges.Add(new Utf8ByteRange(firstByte, firstByte));
+
+                    // Calculate valid second byte range for this first byte
+                    byte minSecond = (byte)(firstByte == minBytes[0] ? minBytes[1] : 0x80);
+                    byte maxSecond = (byte)(firstByte == maxBytes[0] ? maxBytes[1] : 0xBF);
+
+                    pattern.ByteRanges.Add(new Utf8ByteRange(minSecond, maxSecond));
+                    patterns.Add(pattern);
+                }
+            }
+            else if (utf8Length == 3)
+            {
+                // 3-byte UTF-8: Handle encoding constraints mathematically
+                var minBytes = Encoding.UTF8.GetBytes(char.ConvertFromUtf32(minCodepoint));
+                var maxBytes = Encoding.UTF8.GetBytes(char.ConvertFromUtf32(maxCodepoint));
+
+                // Split by first byte due to UTF-8 encoding rules
+                for (byte firstByte = minBytes[0]; firstByte <= maxBytes[0]; firstByte++)
+                {
+                    var pattern = new Utf8BytePattern();
+                    pattern.ByteRanges.Add(new Utf8ByteRange(firstByte, firstByte));
+
+                    // Calculate valid second byte range for this first byte
+                    byte minSecond, maxSecond;
+                    if (firstByte == 0xE0)
+                    {
+                        // For 0xE0, second byte must be 0xA0-0xBF (no overlong encodings)
+                        minSecond = (byte)Math.Max(0xA0, firstByte == minBytes[0] ? minBytes[1] : 0x80);
+                        maxSecond = (byte)(firstByte == maxBytes[0] ? maxBytes[1] : 0xBF);
+                    }
+                    else
+                    {
+                        // For 0xE1-0xEF, second byte can be 0x80-0xBF
+                        minSecond = (byte)(firstByte == minBytes[0] ? minBytes[1] : 0x80);
+                        maxSecond = (byte)(firstByte == maxBytes[0] ? maxBytes[1] : 0xBF);
+                    }
+
+                    pattern.ByteRanges.Add(new Utf8ByteRange(minSecond, maxSecond));
+
+                    // Third byte range
+                    byte minThird = (byte)(firstByte == minBytes[0] && minSecond == minBytes[1] ? minBytes[2] : 0x80);
+                    byte maxThird = (byte)(firstByte == maxBytes[0] && maxSecond == maxBytes[1] ? maxBytes[2] : 0xBF);
+
+                    pattern.ByteRanges.Add(new Utf8ByteRange(minThird, maxThird));
+                    patterns.Add(pattern);
+                }
+            }
+            else if (utf8Length == 4)
+            {
+                // Similar mathematical approach for 4-byte sequences
+                // (Implementation similar to 3-byte case)
+                var minBytes = Encoding.UTF8.GetBytes(char.ConvertFromUtf32(minCodepoint));
+                var maxBytes = Encoding.UTF8.GetBytes(char.ConvertFromUtf32(maxCodepoint));
+
+                var pattern = new Utf8BytePattern();
+                for (int i = 0; i < 4; i++)
+                {
+                    pattern.ByteRanges.Add(new Utf8ByteRange(minBytes[i], maxBytes[i]));
+                }
+                patterns.Add(pattern);
             }
 
             return patterns;

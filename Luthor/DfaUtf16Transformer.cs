@@ -152,56 +152,137 @@ namespace Luthor
         {
             var patterns = new List<Utf16CodeUnitPattern>();
 
-            
-            // UTF-16 boundary: 0x10000 (where surrogate pairs begin)
+            // Validate input ranges - skip surrogates in BMP
+            if (minCodepoint >= 0xD800 && minCodepoint <= 0xDFFF)
+            {
+                minCodepoint = 0xE000; // Skip surrogate range
+            }
+            if (maxCodepoint >= 0xD800 && maxCodepoint <= 0xDFFF)
+            {
+                maxCodepoint = 0xD7FF; // End before surrogate range
+                if (maxCodepoint < minCodepoint) return patterns; // Empty range
+            }
+
             const int BMP_MAX = 0xFFFF;
             const int SUPPLEMENTARY_MIN = 0x10000;
 
             if (maxCodepoint <= BMP_MAX)
             {
-                // Entire range is in BMP - direct encoding
-                var pattern = new Utf16CodeUnitPattern();
-                pattern.CodeUnits.Add(new CodeUnitRange(minCodepoint, maxCodepoint));
-                patterns.Add(pattern);
+                // Handle BMP range, potentially split around surrogates
+                foreach (var (min, max) in SplitRangeAroundSurrogates(minCodepoint, maxCodepoint))
+                {
+                    var pattern = new Utf16CodeUnitPattern();
+                    pattern.CodeUnits.Add(new CodeUnitRange(min, max));
+                    patterns.Add(pattern);
+                }
             }
             else if (minCodepoint >= SUPPLEMENTARY_MIN)
             {
-                // Entire range is supplementary - surrogate pairs
-                var pattern = GenerateSurrogatePairPattern(minCodepoint, maxCodepoint);
-                patterns.Add(pattern);
+                // Entire range is supplementary - use new method
+                patterns.AddRange(GenerateSurrogatePairPatterns(minCodepoint, maxCodepoint));
             }
             else
             {
                 // Range crosses BMP boundary - split it
-                // BMP part
-                var bmpPattern = new Utf16CodeUnitPattern();
-                bmpPattern.CodeUnits.Add(new CodeUnitRange(minCodepoint, BMP_MAX));
-                patterns.Add(bmpPattern);
+
+                // BMP part (split around surrogates)
+                foreach (var (min, max) in SplitRangeAroundSurrogates(minCodepoint, Math.Min(maxCodepoint, BMP_MAX)))
+                {
+                    var bmpPattern = new Utf16CodeUnitPattern();
+                    bmpPattern.CodeUnits.Add(new CodeUnitRange(min, max));
+                    patterns.Add(bmpPattern);
+                }
 
                 // Supplementary part
-                var supplementaryPattern = GenerateSurrogatePairPattern(SUPPLEMENTARY_MIN, maxCodepoint);
-                patterns.Add(supplementaryPattern);
+                if (maxCodepoint >= SUPPLEMENTARY_MIN)
+                {
+                    patterns.AddRange(GenerateSurrogatePairPatterns(SUPPLEMENTARY_MIN, maxCodepoint));
+                }
             }
 
-            
             return patterns;
         }
-
-        private static Utf16CodeUnitPattern GenerateSurrogatePairPattern(int minCodepoint, int maxCodepoint)
+        private static IEnumerable<(int min, int max)> SplitRangeAroundSurrogates(int minCodepoint, int maxCodepoint)
         {
-            var pattern = new Utf16CodeUnitPattern();
+            // Range entirely before surrogates
+            if (maxCodepoint < 0xD800)
+            {
+                yield return (minCodepoint, maxCodepoint);
+                yield break;
+            }
 
-            // Calculate surrogate ranges
+            // Range entirely after surrogates  
+            if (minCodepoint > 0xDFFF)
+            {
+                yield return (minCodepoint, maxCodepoint);
+                yield break;
+            }
+
+            // Range spans surrogates - split it
+            if (minCodepoint < 0xD800)
+            {
+                yield return (minCodepoint, 0xD7FF); // Before surrogates
+            }
+
+            if (maxCodepoint > 0xDFFF)
+            {
+                yield return (0xE000, maxCodepoint); // After surrogates
+            }
+        }
+
+        private static List<Utf16CodeUnitPattern> GenerateSurrogatePairPatterns(int minCodepoint, int maxCodepoint)
+        {
+            var patterns = new List<Utf16CodeUnitPattern>();
+
+            if (minCodepoint < 0x10000 || maxCodepoint < 0x10000)
+            {
+                throw new ArgumentException("Codepoints must be in supplementary range (>= 0x10000)");
+            }
+
             var (minHigh, minLow) = CodepointToSurrogates(minCodepoint);
             var (maxHigh, maxLow) = CodepointToSurrogates(maxCodepoint);
 
-            // High surrogate range
-            pattern.CodeUnits.Add(new CodeUnitRange(minHigh, maxHigh));
+            if (minHigh == maxHigh)
+            {
+                // Range is within a single high surrogate - simple case
+                var pattern = new Utf16CodeUnitPattern();
+                pattern.CodeUnits.Add(new CodeUnitRange(minHigh, minHigh));
+                pattern.CodeUnits.Add(new CodeUnitRange(minLow, maxLow));
+                patterns.Add(pattern);
+            }
+            else
+            {
+                // Range spans multiple high surrogates - need multiple patterns
 
-            // Low surrogate range
-            pattern.CodeUnits.Add(new CodeUnitRange(minLow, maxLow));
+                // First high surrogate: minHigh with minLow to 0xDFFF
+                if (minLow <= 0xDFFF)
+                {
+                    var firstPattern = new Utf16CodeUnitPattern();
+                    firstPattern.CodeUnits.Add(new CodeUnitRange(minHigh, minHigh));
+                    firstPattern.CodeUnits.Add(new CodeUnitRange(minLow, 0xDFFF));
+                    patterns.Add(firstPattern);
+                }
 
-            return pattern;
+                // Middle high surrogates: (minHigh+1) to (maxHigh-1) with full low range
+                if (maxHigh > minHigh + 1)
+                {
+                    var middlePattern = new Utf16CodeUnitPattern();
+                    middlePattern.CodeUnits.Add(new CodeUnitRange(minHigh + 1, maxHigh - 1));
+                    middlePattern.CodeUnits.Add(new CodeUnitRange(0xDC00, 0xDFFF));
+                    patterns.Add(middlePattern);
+                }
+
+                // Last high surrogate: maxHigh with 0xDC00 to maxLow
+                if (maxLow >= 0xDC00)
+                {
+                    var lastPattern = new Utf16CodeUnitPattern();
+                    lastPattern.CodeUnits.Add(new CodeUnitRange(maxHigh, maxHigh));
+                    lastPattern.CodeUnits.Add(new CodeUnitRange(0xDC00, maxLow));
+                    patterns.Add(lastPattern);
+                }
+            }
+
+            return patterns;
         }
 
         private static (int high, int low) CodepointToSurrogates(int codepoint)

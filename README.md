@@ -36,7 +36,7 @@ Special thanks to Dr. Robert van Engelen for his guidance on implementing lazy m
 ### Installation
 
 ```bash
-dotnet tool install luthor -g
+dotnet tool install luthor-tool -g
 ```
 
 ### Basic Usage

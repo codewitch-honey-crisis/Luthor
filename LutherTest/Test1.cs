@@ -73,7 +73,7 @@ namespace LutherTest
                     Console.WriteLine($"  [{t.Min}-{t.Max}] -> q{cl.IndexOf(t.To)}");
 
 
-                throw ex;
+                throw;
             }
         }
         [TestMethod]

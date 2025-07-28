@@ -278,7 +278,7 @@ namespace Luthor
         /// <summary>
         /// Indicates the 0 based position on which the regular expression was found
         /// </summary>
-        public long Position { get; set; } = -1;
+        public long Location { get; set; } = -1;
         /// <summary>
         /// A user defined, application specific value to associate with this expression
         /// </summary>
@@ -298,11 +298,16 @@ namespace Luthor
         /// <param name="position">The 0 based position where the expression appears</param>
         public void SetLocation(long position)
         {
-            Position = position;
+            Location = position;
         }
         public List<RegexComment> Comments { get; } = new List<RegexComment>();
 
         public virtual bool IsLeaf { get; } = false;
+
+        public abstract bool IsConsuming
+        {
+            get;
+        }
         public virtual IList<DfaRange> GetRanges()
         {
             return new DfaRange[0];
@@ -443,6 +448,20 @@ namespace Luthor
             return CloneImpl();
         }
         /// <summary>
+        /// Clones an expression's metadata
+        /// </summary>
+        /// <param name="expr">The expression</param>
+        protected void CloneMetadata(RegexExpression expr)
+        {
+            foreach (var comment in Comments)
+            {
+                var newComment = comment.Clone();
+                newComment.SetLocation(comment.Position);
+                expr.Comments.Add(newComment);
+            }
+            expr.SetLocation(Location);
+        }
+        /// <summary>
         /// Appends the cooments attached to the expression to the output
         /// </summary>
         /// <param name="sb">The builder to fill</param>
@@ -514,7 +533,7 @@ namespace Luthor
                     if (line.StartsWith("#") && (line.Length == 1 || char.IsWhiteSpace(line[1]))) // is comment
                     {
                         RegexComment comment = new RegexComment();
-                        comment.SetPosition(pos);
+                        comment.SetLocation(pos);
                         if (line.Length > 1)
                         {
                             comment.Text = line.Substring(2);
@@ -549,7 +568,7 @@ namespace Luthor
         {
             RegexExpression? result = null, next = null;
             int ich;
-           
+
             string? nmgrp = null;
             pc.EnsureStarted();
             var position = pc.Position;
@@ -815,9 +834,7 @@ namespace Luthor
                         next = null;
                         break;
                     case '\\':
-                        Console.WriteLine($"DEBUG: Found backslash, next char will be: {(char)pc.Codepoint}");
                         pc.Advance();
-                        Console.WriteLine($"DEBUG: After advance, parsing char: {(char)pc.Codepoint} (code: {pc.Codepoint})");
                         pc.Expecting();
                         switch (pc.Codepoint)
                         {
@@ -841,10 +858,7 @@ namespace Luthor
                                 break;
                             case 'u':
                             case 'U':
-                                Console.WriteLine("DEBUG: Entering U case");
                                 var ech = _ParseRangeEscapePart(pc);
-                                Console.WriteLine($"DEBUG: _ParseRangeEscapePart returned: {ech} (U+{ech:X4})");
-                                Console.WriteLine($"DEBUG: After parse, cursor at: {(pc.Codepoint >= 0 ? ((char)pc.Codepoint).ToString() : "EOF")} (code: {pc.Codepoint})");
                                 if (null == next)
                                     next = new RegexCharsetCharEntry(ech);
                                 else if (readDash)
@@ -1568,7 +1582,7 @@ namespace Luthor
         /// Indicates whether or not this statement is a empty element or not
         /// </summary>
         public override bool IsEmptyElement => false;
-
+        public override bool IsConsuming => false;
         /// <summary>
         /// Creates a terminator expression with the specified codepoint
         /// </summary>
@@ -1596,7 +1610,9 @@ namespace Luthor
         /// <returns>A new copy of this expression</returns>
         public new RegexTerminatorExpression Clone()
         {
-            return new RegexTerminatorExpression();
+            var result = new RegexTerminatorExpression();
+            CloneMetadata(result);
+            return result;
         }
 
     }
@@ -1606,7 +1622,7 @@ namespace Luthor
     partial class RegexComment : ICloneable, IEquatable<RegexComment>
     {
         public long Position { get; private set; } = -1;
-        public void SetPosition(long position)
+        public void SetLocation(long position)
         {
             Position = position;
         }
@@ -1745,6 +1761,18 @@ namespace Luthor
         /// </summary>
         public override bool IsEmptyElement => Rules.Count == 0;
         public override bool IsLeaf => false;
+        public override bool IsConsuming
+        {
+            get
+            {
+                if (Rules.Count == 0) return false;
+                foreach (var rule in Rules)
+                {
+                    if (rule != null && rule.IsConsuming) return true;
+                }
+                return false;
+            }
+        }
         /// <summary>
         /// Indicates the rules in this expression
         /// </summary>
@@ -1791,9 +1819,12 @@ namespace Luthor
             var rules = new List<RegexExpression>(Rules.Count);
             foreach (var rule in Rules)
             {
+                var newRule = rule.Clone();
                 rules.Add(rule.Clone());
             }
-            return new RegexLexerExpression(rules);
+            var result = new RegexLexerExpression(rules);
+            CloneMetadata(result);
+            return result;
         }
 
         #region Value semantics
@@ -1806,7 +1837,7 @@ namespace Luthor
         {
             if (ReferenceEquals(rhs, this)) return true;
             if (ReferenceEquals(rhs, null)) return false;
-            if (Position != rhs.Position) return false;
+            if (Location != rhs.Location) return false;
             if (Rules.Count != rhs.Rules.Count) return false;
             for (int i = 0; i < Rules.Count; i++)
             {
@@ -1827,7 +1858,7 @@ namespace Luthor
         /// <returns>A hash code for this expression</returns>
         public override int GetHashCode()
         {
-            var result = Position.GetHashCode();
+            var result = Location.GetHashCode();
             foreach (var rule in Rules)
             {
                 result ^= rule.GetHashCode();
@@ -1876,6 +1907,7 @@ namespace Luthor
         /// </summary>
         public override bool IsEmptyElement => Codepoint == -1;
         public override bool IsLeaf => true;
+        public override bool IsConsuming => !IsEmptyElement;
         /// <summary>
         /// Indicates the codepoint in this expression
         /// </summary>
@@ -1961,7 +1993,9 @@ namespace Luthor
         /// <returns>A new copy of this expression</returns>
         public new RegexLiteralExpression Clone()
         {
-            return new RegexLiteralExpression(Value);
+            var result = new RegexLiteralExpression(Value);
+            CloneMetadata(result);
+            return result;
         }
 
         #region Value semantics
@@ -1974,7 +2008,7 @@ namespace Luthor
         {
             if (ReferenceEquals(rhs, this)) return true;
             if (ReferenceEquals(rhs, null)) return false;
-            if (Position != rhs.Position) return false;
+            if (Location != rhs.Location) return false;
             return Codepoint == rhs.Codepoint;
         }
         /// <summary>
@@ -1989,7 +2023,7 @@ namespace Luthor
         /// </summary>
         /// <returns>A hash code for this expression</returns>
         public override int GetHashCode()
-            => Position.GetHashCode() ^ ((Value != null) ? Value.GetHashCode() : 0);
+            => Location.GetHashCode() ^ ((Value != null) ? Value.GetHashCode() : 0);
         /// <summary>
         /// Indicates whether or not two expression are the same
         /// </summary>
@@ -2032,6 +2066,7 @@ namespace Luthor
         /// Indicates whether or not this statement is a empty element or not
         /// </summary>
         public override bool IsEmptyElement => false;
+        public override bool IsConsuming => false;
         public override bool IsLeaf => true;
         /// <summary>
         /// Indicates the anchor type of this expression
@@ -2075,7 +2110,9 @@ namespace Luthor
         /// <returns>A new copy of this expression</returns>
         public new RegexAnchorExpression Clone()
         {
-            return new RegexAnchorExpression(Type);
+            var result = new RegexAnchorExpression(Type);
+            CloneMetadata(result);
+            return result;
         }
 
         #region Value semantics
@@ -2088,7 +2125,7 @@ namespace Luthor
         {
             if (ReferenceEquals(rhs, this)) return true;
             if (ReferenceEquals(rhs, null)) return false;
-            if (Position != rhs.Position) return false;
+            if (Location != rhs.Location) return false;
             return Type == rhs.Type;
         }
         /// <summary>
@@ -2103,7 +2140,7 @@ namespace Luthor
         /// </summary>
         /// <returns>A hash code for this expression</returns>
         public override int GetHashCode()
-            => Position.GetHashCode() ^ Type.GetHashCode();
+            => Location.GetHashCode() ^ Type.GetHashCode();
         /// <summary>
         /// Indicates whether or not two expression are the same
         /// </summary>
@@ -2528,6 +2565,7 @@ namespace Luthor
         /// Indicates whether or not this statement is a empty element or not
         /// </summary>
         public override bool IsEmptyElement => Entries.Count == 0;
+        public override bool IsConsuming => !IsEmptyElement;
         /// <summary>
         /// Indicates the <see cref="RegexCharsetEntry"/> entries in the character set
         /// </summary>
@@ -2665,7 +2703,9 @@ namespace Luthor
         /// <returns>A new copy of this expression</returns>
         public new RegexCharsetExpression Clone()
         {
-            return new RegexCharsetExpression(Entries, HasNegatedRanges);
+            var result = new RegexCharsetExpression(Entries, HasNegatedRanges);
+            CloneMetadata(result);
+            return result;
         }
         #region Value semantics
         /// <summary>
@@ -2677,7 +2717,7 @@ namespace Luthor
         {
             if (ReferenceEquals(rhs, this)) return true;
             if (ReferenceEquals(rhs, null)) return false;
-            if (Position != rhs.Position) return false;
+            if (Location != rhs.Location) return false;
             if (HasNegatedRanges == rhs.HasNegatedRanges && rhs.Entries.Count == Entries.Count)
             {
                 for (int ic = Entries.Count, i = 0; i < ic; ++i)
@@ -2705,7 +2745,7 @@ namespace Luthor
         public override int GetHashCode()
         {
             var result = HasNegatedRanges.GetHashCode();
-            result ^= Position.GetHashCode();
+            result ^= Location.GetHashCode();
             for (int ic = Entries.Count, i = 0; i < ic; ++i)
                 result ^= Entries[i].GetHashCode();
             return result;
@@ -2750,6 +2790,15 @@ namespace Luthor
             get
             {
                 return ((Left != null && Right == null && Left.IsSingleElement) || (Left == null && Right != null && Right.IsSingleElement));
+            }
+        }
+        public override bool IsConsuming
+        {
+            get
+            {
+                if (Left != null && Left.IsConsuming) { return true; }
+                if (Right != null && Right.IsConsuming) { return true; }
+                return false;
             }
         }
         /// <summary>
@@ -2818,6 +2867,7 @@ namespace Luthor
             {
                 result.Right = Right.Clone();
             }
+            CloneMetadata(result);
             return result;
         }
         #region Value semantics
@@ -2830,7 +2880,7 @@ namespace Luthor
         {
             if (ReferenceEquals(rhs, this)) return true;
             if (ReferenceEquals(rhs, null)) return false;
-            if (Position != rhs.Position) return false;
+            if (Location != rhs.Location) return false;
             if ((Left == null && rhs.Left == null) || (Left != null && Left.Equals(rhs.Left)))
             {
                 return ((Right == null && rhs.Right == null) || (Right != null && Right.Equals(rhs.Right)));
@@ -2850,7 +2900,7 @@ namespace Luthor
         /// <returns>A hash code for this expression</returns>
         public override int GetHashCode()
         {
-            var result = Position.GetHashCode();
+            var result = Location.GetHashCode();
             if (Left != null)
             {
                 result ^= Left.GetHashCode();
@@ -2944,6 +2994,15 @@ namespace Luthor
         /// Indicates whether or not this statement is a empty element or not
         /// </summary>
         public override bool IsEmptyElement => (Left == null || Left.IsEmptyElement) && (Right == null || Right.IsEmptyElement);
+        public override bool IsConsuming
+        {
+            get
+            {
+                if (Left != null && Left.IsConsuming) { return true; }
+                if (Right != null && Right.IsConsuming) { return true; }
+                return false;
+            }
+        }
         /// <summary>
         /// Creates a new instance from a list of expressions
         /// </summary>
@@ -3039,6 +3098,7 @@ namespace Luthor
             {
                 result.Right = Right.Clone();
             }
+            CloneMetadata(result);
             return result;
         }
         #region Value semantics
@@ -3046,7 +3106,7 @@ namespace Luthor
         {
             if (ReferenceEquals(rhs, this)) return true;
             if (ReferenceEquals(rhs, null)) return false;
-            if (Position != rhs.Position) return false;
+            if (Location != rhs.Location) return false;
             if ((Left == null && rhs.Left == null) || (Left != null && Left.Equals(rhs.Left)))
             {
                 return ((Right == null && rhs.Right == null) || (Right != null && Right.Equals(rhs.Right)));
@@ -3079,7 +3139,7 @@ namespace Luthor
         /// <returns>A hash code for this expression</returns>
         public override int GetHashCode()
         {
-            var result = Position.GetHashCode();
+            var result = Location.GetHashCode();
             if (Left != null)
             {
                 result ^= Left.GetHashCode();
@@ -3132,6 +3192,7 @@ namespace Luthor
         /// Indicates whether or not this statement is a empty element or not
         /// </summary>
         public override bool IsEmptyElement => Expression == null || Expression.IsEmptyElement;
+        public override bool IsConsuming => Expression != null && Expression.IsConsuming;
         /// <summary>
         /// Creates a repeat expression with the specifed target expression, and minimum and maximum occurances
         /// </summary>
@@ -3243,7 +3304,40 @@ namespace Luthor
         }
         public RegexExpression ExpandRepeats()
         {
-            if ((MinOccurs < 2 && MaxOccurs <= MinOccurs) || Expression == null || Expression.IsEmptyElement)
+            if (Expression == null || Expression.IsEmptyElement)
+            {
+                return this;
+            }
+
+            // CRITICAL FIX: Don't expand simple quantifiers *, +, ?, *?, +?, ??
+            // They must remain as RegexRepeatExpression for proper DFA construction
+
+            // Check for * or *? (kleene star): MinOccurs=0, MaxOccurs=-1
+            if ((MinOccurs == 0 || MinOccurs == -1) && (MaxOccurs == -1 || MaxOccurs == 0))
+            {
+                return this; // Don't expand *, *?
+            }
+
+            // Check for + or +? (plus): MinOccurs=1, MaxOccurs=-1  
+            if (MinOccurs == 1 && (MaxOccurs == -1 || MaxOccurs == 0))
+            {
+                return this; // Don't expand +, +?
+            }
+
+            // Check for ? or ?? (optional): MinOccurs=0, MaxOccurs=1
+            if (MinOccurs == 0 && MaxOccurs == 1)
+            {
+                return this; // Don't expand ?, ??
+            }
+
+            // Check for single occurrence: MinOccurs=1, MaxOccurs=1
+            if (MinOccurs == 1 && MaxOccurs == 1)
+            {
+                return this; // Don't expand single occurrence
+            }
+
+            // Only expand if both MinOccurs and MaxOccurs are > 1 (complex quantifiers like {2,5})
+            if (MinOccurs < 2 && MaxOccurs < 2)
             {
                 return this;
             }
@@ -3297,7 +3391,9 @@ namespace Luthor
         /// <returns>A new copy of this expression</returns>
         public new RegexRepeatExpression Clone()
         {
-            return new RegexRepeatExpression(Expression, MinOccurs, MaxOccurs, IsLazy);
+            var result = new RegexRepeatExpression(Expression, MinOccurs, MaxOccurs, IsLazy);
+            CloneMetadata(result);
+            return result;
         }
 
         /// <summary>
@@ -3309,7 +3405,7 @@ namespace Luthor
         {
             if (ReferenceEquals(rhs, this)) return true;
             if (ReferenceEquals(rhs, null)) return false;
-            if (Position != rhs.Position) return false;
+            if (Location != rhs.Location) return false;
             if (IsLazy != rhs.IsLazy) return false;
             if (Equals(Expression, rhs.Expression))
             {
@@ -3334,7 +3430,7 @@ namespace Luthor
         /// <returns>A hash code for this expression</returns>
         public override int GetHashCode()
         {
-            var result = Position.GetHashCode() ^ Math.Max(MinOccurs, 0) ^ Math.Max(MaxOccurs, 0) ^ IsLazy.GetHashCode();
+            var result = Location.GetHashCode() ^ Math.Max(MinOccurs, 0) ^ Math.Max(MaxOccurs, 0) ^ IsLazy.GetHashCode();
             if (null != Expression)
                 return result ^ Expression.GetHashCode();
             return result;

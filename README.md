@@ -163,6 +163,19 @@ static int lex_ranged(const char** data, const int* dfa) {
         int anchor_mask = dfa[machine_index++];
         int transition_count = dfa[machine_index++];
 
+        // SPECIAL CASE: Check for $ anchor before newline
+        if (accept_id != -1 && (anchor_mask & 2) && *sz == '\n') {
+            bool anchor_valid = true;
+            if ((anchor_mask & 1) && !at_line_start) {
+                anchor_valid = false;
+            }
+            // End anchor is valid since we're checking before newline
+            if (anchor_valid) {
+                *data = sz;
+                return accept_id;
+            }
+        }
+
         for (int t = 0; t < transition_count; t++) {
             int dest_state_index = dfa[machine_index++];
             int range_count = dfa[machine_index++];

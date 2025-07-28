@@ -143,6 +143,34 @@ namespace Luthor
                 list.Add(default(T));
             }
         }
+        
+        static bool _AreStatesEquivalentForMinimization(Dfa state1, Dfa state2)
+        {
+            // Must have same accept symbol
+            if (state1.AcceptSymbol != state2.AcceptSymbol)
+                return false;
+
+            // Check anchor mask
+            var anchor1 = state1.Attributes.ContainsKey("AnchorMask") ? (int)state1.Attributes["AnchorMask"] : 0;
+            var anchor2 = state2.Attributes.ContainsKey("AnchorMask") ? (int)state2.Attributes["AnchorMask"] : 0;
+            if (anchor1 != anchor2)
+                return false;
+
+
+            // Must have same lazy position information
+            var lazy1 = state1.Attributes.ContainsKey("LazyPositions") ? new HashSet<RegexExpression>((IEnumerable<RegexExpression>)state1.Attributes["LazyPositions"]) : new HashSet<RegexExpression>();
+            var lazy2 = state2.Attributes.ContainsKey("LazyPositions") ? new HashSet<RegexExpression>((IEnumerable<RegexExpression>)state2.Attributes["LazyPositions"]) : new HashSet<RegexExpression>();
+            if (!lazy1.SetEquals(lazy2))
+                return false;
+
+            // Must have same regular positions 
+            var pos1 = state1.Attributes.ContainsKey("Positions") ? new HashSet<RegexExpression>((IEnumerable<RegexExpression>)state1.Attributes["Positions"]) : new HashSet<RegexExpression>();
+            var pos2 = state2.Attributes.ContainsKey("Positions") ? new HashSet<RegexExpression>((IEnumerable<RegexExpression>)state2.Attributes["Positions"]) : new HashSet<RegexExpression>();
+            if (!pos1.SetEquals(pos2))
+                return false;
+
+            return true;
+        }
         static Dfa _Minimize(Dfa a, IProgress<int> progress)
         {
             
@@ -235,26 +263,56 @@ namespace Luthor
                 }
             }
 
+
             // Find initial partition and reverse edges.
             // Create a partition for each unique AcceptSymbol value
             var acceptSymbolToPartition = new Dictionary<int, int>();
-            var partitionCount = 0;
+            //var partitionCount = 0;
 
-            // First pass: map each unique AcceptSymbol to a partition index
+            //// First pass: map each unique AcceptSymbol to a partition index
+            //foreach (var qq in states)
+            //{
+            //    int acceptSymbol = qq.AcceptSymbol;
+            //    if (!acceptSymbolToPartition.ContainsKey(acceptSymbol))
+            //    {
+            //        acceptSymbolToPartition[acceptSymbol] = partitionCount++;
+            //        partition[partitionCount - 1] = new LinkedList<Dfa>();
+            //    }
+            //}
+
+            var stateToPartition = new Dictionary<Dfa, int>();
+            var partitions = new List<List<Dfa>>();
+
             foreach (var qq in states)
             {
-                int acceptSymbol = qq.AcceptSymbol;
-                if (!acceptSymbolToPartition.ContainsKey(acceptSymbol))
+                // Find existing equivalent partition
+                int partitionIndex = -1;
+                for (int i = 0; i < partitions.Count; i++)
                 {
-                    acceptSymbolToPartition[acceptSymbol] = partitionCount++;
-                    partition[partitionCount - 1] = new LinkedList<Dfa>();
+                    if (_AreStatesEquivalentForMinimization(qq, partitions[i][0]))
+                    {
+                        partitionIndex = i;
+                        break;
+                    }
                 }
+
+                // Create new partition if no equivalent found
+                if (partitionIndex == -1)
+                {
+                    partitionIndex = partitions.Count;
+                    partitions.Add(new List<Dfa>());
+                    partition[partitionIndex] = new LinkedList<Dfa>();
+                }
+
+                partitions[partitionIndex].Add(qq);
+                stateToPartition[qq] = partitionIndex;
             }
 
+            int partitionCount = partitions.Count;
             // Second pass: assign states to partitions
             foreach (var qq in states)
             {
-                int partitionIndex = acceptSymbolToPartition[qq.AcceptSymbol];
+                int partitionIndex = stateToPartition[qq];
                 partition[partitionIndex].AddLast(qq);
                 block[qq._MinimizationTag] = partitionIndex;
 
@@ -438,8 +496,72 @@ namespace Luthor
                 var pn = partition[n];
                 System.Diagnostics.Debug.Assert(pn != null);
 
+                // Replace the accept symbol assignment logic around line 460:
+
+                // OLD CODE:
+                // var representative = pn.First.Value;
+                // s.Attributes["AcceptSymbol"] = representative.AcceptSymbol;
+
+                // NEW CODE - More careful accept symbol assignment:
+
                 var representative = pn.First.Value;
-                s.Attributes["AcceptSymbol"] = representative.AcceptSymbol;
+
+                // Only assign accept symbol if ALL states in partition have the same accept symbol
+                int? commonAcceptSymbol = null;
+                bool allSameAcceptSymbol = true;
+                foreach (var state in pn)
+                {
+                    if (commonAcceptSymbol == null)
+                    {
+                        commonAcceptSymbol = state.AcceptSymbol;
+                    }
+                    else if (commonAcceptSymbol != state.AcceptSymbol)
+                    {
+                        allSameAcceptSymbol = false;
+                        break;
+                    }
+                }
+
+                if (allSameAcceptSymbol && commonAcceptSymbol != -1)
+                {
+                    s.Attributes["AcceptSymbol"] = commonAcceptSymbol.Value;
+
+                    // Only assign anchor mask if ALL states in partition have the same anchor mask
+                    int? commonAnchorMask = null;
+                    bool allSameAnchorMask = true;
+                    foreach (var state in pn)
+                    {
+                        int stateAnchorMask = state.Attributes.ContainsKey("AnchorMask") ? (int)state.Attributes["AnchorMask"] : 0;
+                        if (commonAnchorMask == null)
+                        {
+                            commonAnchorMask = stateAnchorMask;
+                        }
+                        else if (commonAnchorMask != stateAnchorMask)
+                        {
+                            allSameAnchorMask = false;
+                            break;
+                        }
+                    }
+
+                    if (allSameAnchorMask && commonAnchorMask != 0)
+                    {
+                        s.Attributes["AnchorMask"] = commonAnchorMask.Value;
+                    }
+
+                    // Copy other attributes if they're consistent across the partition
+                    // (LazyPositions and Positions should already be consistent due to _AreStatesEquivalentForMinimization)
+                    if (representative.Attributes.ContainsKey("LazyPositions"))
+                    {
+                        s.Attributes["LazyPositions"] = representative.Attributes["LazyPositions"];
+                    }
+
+                    if (representative.Attributes.ContainsKey("Positions"))
+                    {
+                        s.Attributes["Positions"] = representative.Attributes["Positions"];
+                    }
+                }
+                //var representative = pn.First.Value;
+                //s.Attributes["AcceptSymbol"] = representative.AcceptSymbol;
 
                 foreach (var q in pn)
                 {
@@ -452,7 +574,33 @@ namespace Luthor
                 ++prog;
                 progress?.Report(prog);
             }
+            //Console.WriteLine($"=== Creating minimized states ===");
+            for (int n = 0; n < newstates.Length; n++)
+            {
+                var s = newstates[n];
+                var pn = partition[n];
+                //Console.WriteLine($"\nPartition {n} contains {pn.Count} states:");
 
+                foreach (var state in pn)
+                {
+                    //Console.WriteLine($"  State: AcceptSymbol={state.AcceptSymbol}, IsAccept={state.IsAccept}");
+                    if (state.Attributes.ContainsKey("Positions"))
+                    {
+                        var positions = (IEnumerable<RegexExpression>)state.Attributes["Positions"];
+                        //Console.WriteLine($"    Positions: {string.Join(", ", positions.Select(p => p.GetType().Name))}");
+                    }
+                    if (state.Attributes.ContainsKey("LazyPositions"))
+                    {
+                        var lazyPos = (IEnumerable<RegexExpression>)state.Attributes["LazyPositions"];
+                        //Console.WriteLine($"    LazyPositions: {string.Join(", ", lazyPos.Select(p => p.GetType().Name))}");
+                    }
+                }
+
+                var representative = pn.First.Value;
+                //Console.WriteLine($"  Representative: AcceptSymbol={representative.AcceptSymbol}, IsAccept={representative.IsAccept}");
+                s.Attributes["AcceptSymbol"] = representative.AcceptSymbol;
+                //Console.WriteLine($"  New state: AcceptSymbol={s.AcceptSymbol}");
+            }
 
 
             // Build transitions FIRST (while _MinimizationTag still has original values)
@@ -477,24 +625,42 @@ namespace Luthor
                 }
 
             }
-            
-            // remove dead transitions
+
+            // Remove dead transitions, but be more careful about lazy quantifiers
             foreach (var ffa in a.FillClosure())
             {
                 var itrns = new List<DfaTransition>(ffa._transitions);
                 foreach (var trns in itrns)
                 {
-                    var found = false;
-                    foreach (var afa in trns.To.FillClosure())
+                    bool isDeadTransition = true;
+
+                    // A transition is NOT dead if:
+                    // 1. It leads to an accepting state, OR
+                    // 2. It originates from an accepting state (needed for lazy quantifiers), OR  
+                    // 3. It can eventually reach an accepting state
+
+                    if (ffa.IsAccept)
                     {
-                        if (afa.IsAccept)
+                        // Preserve all transitions from accepting states (lazy quantifier behavior)
+                        isDeadTransition = false;
+                        //Console.WriteLine($"Preserving transition [{trns.Min}-{trns.Max}] from accepting state");
+                    }
+                    else
+                    {
+                        // For non-accepting states, check if transition can reach accepting state
+                        foreach (var afa in trns.To.FillClosure())
                         {
-                            found = true;
-                            break;
+                            if (afa.IsAccept)
+                            {
+                                isDeadTransition = false;
+                                break;
+                            }
                         }
                     }
-                    if (!found)
+
+                    if (isDeadTransition)
                     {
+                        //Console.WriteLine($"Removing dead transition [{trns.Min}-{trns.Max}] from state AcceptSymbol={ffa.AcceptSymbol}");
                         ffa._transitions.Remove(trns);
                     }
                 }

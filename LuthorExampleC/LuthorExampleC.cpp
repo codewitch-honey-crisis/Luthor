@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
+
 static int lex_non_ranged(const char** data, const int* dfa) {
     const char* sz = *data;
     int current_state_index = 0;
@@ -13,6 +14,19 @@ static int lex_non_ranged(const char** data, const int* dfa) {
         int accept_id = dfa[machine_index++];
         int anchor_mask = dfa[machine_index++];
         int transition_count = dfa[machine_index++];
+
+        // SPECIAL CASE: Check for $ anchor before newline
+        if (accept_id != -1 && (anchor_mask & 2) && *sz == '\n') {
+            bool anchor_valid = true;
+            if ((anchor_mask & 1) && !at_line_start) {
+                anchor_valid = false;
+            }
+            // End anchor is valid since we're checking before newline
+            if (anchor_valid) {
+                *data = sz;
+                return accept_id;
+            }
+        }
 
         for (int t = 0; t < transition_count; t++) {
             int dest_state_index = dfa[machine_index++];
@@ -71,6 +85,19 @@ static int lex_ranged(const char** data, const int* dfa) {
         int anchor_mask = dfa[machine_index++];
         int transition_count = dfa[machine_index++];
 
+        // SPECIAL CASE: Check for $ anchor before newline
+        if (accept_id != -1 && (anchor_mask & 2) && *sz == '\n') {
+            bool anchor_valid = true;
+            if ((anchor_mask & 1) && !at_line_start) {
+                anchor_valid = false;
+            }
+            // End anchor is valid since we're checking before newline
+            if (anchor_valid) {
+                *data = sz;
+                return accept_id;
+            }
+        }
+
         for (int t = 0; t < transition_count; t++) {
             int dest_state_index = dfa[machine_index++];
             int range_count = dfa[machine_index++];
@@ -116,6 +143,7 @@ static int lex_ranged(const char** data, const int* dfa) {
     *data = sz;
     return -1;  // No valid match found
 }
+
 int main()
 {
     static const int ranged_dfa[] = {

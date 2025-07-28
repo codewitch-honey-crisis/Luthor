@@ -147,16 +147,12 @@ namespace Luthor
 
         private static List<Utf8BytePattern> ConvertCodepointRangeToUtf8Patterns(int minCodepoint, int maxCodepoint)
         {
-            Console.WriteLine($"UTF8: Converting range U+{minCodepoint:X4}-U+{maxCodepoint:X4}");
-
             var patterns = new List<Utf8BytePattern>();
             var validRanges = SplitAroundSurrogates(minCodepoint, maxCodepoint);
 
-            Console.WriteLine($"UTF8: Split into {validRanges.Count} ranges:");
             foreach (var (rangeMin, rangeMax) in validRanges)
             {
-                Console.WriteLine($"  Processing range U+{rangeMin:X4}-U+{rangeMax:X4}");
-
+                
                 var currentMin = rangeMin;
                 while (currentMin <= rangeMax)
                 {
@@ -164,14 +160,10 @@ namespace Luthor
                     int maxForLength = GetMaxCodepointForUtf8Length(utf8Length);
                     int currentMax = Math.Min(rangeMax, maxForLength);
 
-                    Console.WriteLine($"    Generating patterns for U+{currentMin:X4}-U+{currentMax:X4} (length {utf8Length})");
+                    
                     var subPatterns = GenerateUtf8PatternsForRange(currentMin, currentMax, utf8Length);
 
-                    foreach (var pattern in subPatterns)
-                    {
-                        Console.WriteLine($"      Pattern: {pattern}");
-                    }
-
+                    
                     patterns.AddRange(subPatterns);
                     currentMin = currentMax + 1;
                 }

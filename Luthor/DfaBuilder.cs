@@ -629,6 +629,20 @@ namespace Luthor
                     // This is an accepting state - apply lazy edge trimming
                     var lazyPositions = GetLazyPositionsFromState(state);
 
+                    var lazyCount = lazyPositions.Count;
+
+                    
+                    if (lazyCount > 0)
+                    {
+                        // DO NOT remove transitions from lazy accepting states
+                        // The lazy behavior should be handled during matching, not by removing transitions
+
+                        // Instead, mark the state as having lazy behavior for the matcher to handle
+                        if (!state.Attributes.ContainsKey("HasLazyBehavior"))
+                        {
+                            state.Attributes["HasLazyBehavior"] = true;
+                        }
+                    }
                     if (lazyPositions.Count > 0)
                     {
                         TrimLazyEdges(state, lazyPositions, positionToLazyParent, firstPosMap);
@@ -636,7 +650,7 @@ namespace Luthor
                 }
             }
         }
-
+        
         // Van Engelen: Cut "lazy edges" by analyzing forward/backward moves
         private static void TrimLazyEdges(Dfa acceptingState, HashSet<RegexExpression> lazyPositions, Dictionary<RegexExpression, RegexRepeatExpression> positionToLazyParent, Dictionary<RegexExpression, HashSet<RegexExpression>> firstPosMap)
         {
@@ -664,11 +678,24 @@ namespace Luthor
         // Determine if an edge should be trimmed based on lazy attribution
         private static bool IsLazyEdgeToTrim(Dfa fromState, Dfa toState, HashSet<RegexExpression> lazyPositions, Dictionary<RegexExpression, RegexRepeatExpression> positionToLazyParent, Dictionary<RegexExpression, HashSet<RegexExpression>> firstPosMap)
         {
+            // CRITICAL: Different logic for accepting states with vs without anchors
+            if (fromState.IsAccept)
+            {
+                // Check if this accepting state has anchors
+                bool hasAnchors = fromState.Attributes.ContainsKey("AnchorMask") &&
+                                 (int)fromState.Attributes["AnchorMask"] != 0;
+
+                if (hasAnchors)
+                {
+                    // Accepting states WITH anchors: preserve all transitions
+                    // (needed to consume remaining input for anchor checking)
+                    return false;
+                }
+             }
+
+            // Original lazy trimming logic for non-accepting states and accepting states without anchors
             var fromPositions = GetPositionsFromState(fromState);
             var toPositions = GetPositionsFromState(toState);
-
-            // Van Engelen: "taking forward/backward regex moves to regex positions into account"
-            // Check if this represents a "backward" move in a lazy context
 
             foreach (var lazyPos in lazyPositions)
             {
@@ -677,17 +704,16 @@ namespace Luthor
                     var lazyParent = positionToLazyParent[lazyPos];
                     var parentFirstPos = lazyParent.Expression?.GetFirstPos(firstPosMap) ?? new HashSet<RegexExpression>();
 
-                    // If the transition goes to positions that include the start of the lazy construct,
-                    // this represents a "backward" move that should be trimmed in lazy mode
                     if (toPositions.Intersect(parentFirstPos).Any())
                     {
-                        return true; // This is a lazy edge to trim
+                        return true;
                     }
                 }
             }
 
             return false;
         }
+       
 
         private static Dfa CreateStateFromPositions(
      HashSet<RegexExpression> positions,

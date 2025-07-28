@@ -641,8 +641,9 @@ namespace Luthor
 
                     if (ffa.IsAccept)
                     {
-                        // Preserve all transitions from accepting states (lazy quantifier behavior)
+                        
                         isDeadTransition = false;
+
                         //Console.WriteLine($"Preserving transition [{trns.Min}-{trns.Max}] from accepting state");
                     }
                     else

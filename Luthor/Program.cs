@@ -114,12 +114,12 @@ static class Program
                 dfa.RenderToFile(Graph.FullName);
             }
             var len = dfa.GetArrayLength();
-            //Console.Error.Write("Minimizing...");
-            //dfa = dfa.ToMinimized();
+            Console.Error.Write("Minimizing...");
+            dfa = dfa.ToMinimized();
             var mlen = dfa.GetArrayLength();
-            //Console.Error.WriteLine($"done! {100-(mlen * 100 / len)}% size savings.");
-            //Console.Error.WriteLine($"Minimized machine has {dfa.FillClosure().Count} states.");
-            //dfa.RenderToFile(@"..\..\..\dfa.jpg");
+            Console.Error.WriteLine($"done! {100-(mlen * 100 / len)}% size savings.");
+            Console.Error.WriteLine($"Minimized machine has {dfa.FillClosure().Count} states.");
+            dfa.RenderToFile(@"..\..\..\dfa.jpg");
             var xformed = false;
             
             

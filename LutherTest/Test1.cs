@@ -696,8 +696,20 @@ namespace LutherTest
                 Assert.AreEqual(acc = TestDfa(dfa, expr.Input), TestDfa(minDfa, expr.Input));
                 Assert.AreEqual(acc != -1, expr.Expected);
             }
-
-
+            var len = dfa.GetArrayLength();
+            var mlen = minDfa.GetArrayLength();
+            Console.WriteLine($"Test machine compared to minimized yields {100 - (mlen * 100 / len)}% size savings.");
+            Assert.IsTrue(mlen <= len, "The minimization state machine is larger than the original even for a moderate case");
+            ast = RegexExpression.Parse("[A-Z_a-z][A-Z_a-z0-9]*");
+            Assert.IsNotNull(ast);
+            dfa = ast.ToDfa();
+            Assert.IsNotNull(dfa);
+            minDfa = dfa.ToMinimized();
+            Assert.IsNotNull(minDfa);
+            len = dfa.GetArrayLength();
+            mlen = minDfa.GetArrayLength();
+            Console.WriteLine($"Standard machine compared to minimized yields {100 - (mlen * 100 / len)}% size savings.");
+            Assert.IsTrue(mlen <= len, "The minimization state machine is larger than the original even for a simple case");
 
         }
         static int TestDfa(Dfa startState, string input)

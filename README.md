@@ -153,45 +153,60 @@ int dfa[] = {
 
 static int lex_ranged(const char** data, const int* dfa) {
     const char* sz = *data;
-    int current_state = 0;
-    
-    while (*sz) {
-        int idx = current_state;
-        int accept = dfa[idx++];
-        int anchors = dfa[idx++];  
-        int trans_count = dfa[idx++];
-        
-        bool found = false;
-        for (int t = 0; t < trans_count && !found; t++) {
-            int dest_state = dfa[idx++];
-            int range_count = dfa[idx++];
-            
+    int current_state_index = 0;
+    bool at_line_start = true;
+    bool at_line_end = (*sz == '\0') || (*sz != '\0' && sz[1] == '\0' && *sz == '\n');
+
+    while (*sz != '\0' || at_line_end) {
+        int machine_index = current_state_index;
+        int accept_id = dfa[machine_index++];
+        int anchor_mask = dfa[machine_index++];
+        int transition_count = dfa[machine_index++];
+
+        for (int t = 0; t < transition_count; t++) {
+            int dest_state_index = dfa[machine_index++];
+            int range_count = dfa[machine_index++];
             for (int r = 0; r < range_count; r++) {
-                int min = dfa[idx++];
-                int max = dfa[idx++];
-                
-                if (*sz >= min && *sz <= max) {
-                    current_state = dest_state;
-                    sz++;
-                    found = true;
-                    break;
+                int min = dfa[machine_index++];
+                int max = dfa[machine_index++];
+                if (min >= 0 && *sz != '\0') {
+                    int c = (unsigned char)*sz;
+                    if (c < min) {
+                        machine_index += ((range_count - (r + 1)) * 2);
+                        break;
+                    }
+                    if (c <= max) {
+                        current_state_index = dest_state_index;
+                        sz++;
+                        at_line_end = (*sz == '\0') || (*sz == '\n');
+                        at_line_start = (c == '\n');
+                        goto found;
+                    }
                 }
             }
-            if (!found) {
-                idx += (range_count * 2); // skip remaining ranges
+        }
+        break;
+    found:
+        accept_id = dfa[current_state_index];
+        anchor_mask = dfa[current_state_index + 1];
+        if (accept_id != -1) {
+            bool anchor_valid = true;
+            if ((anchor_mask & 1) && !at_line_start) {
+                anchor_valid = false;
+            }
+            if ((anchor_mask & 2) && !at_line_end) {
+                anchor_valid = false;
+            }
+
+            if (anchor_valid) {
+                *data = sz;
+                return accept_id;
             }
         }
-        
-        if (!found) break;
+        if (*sz == '\0') break;
     }
-    
-    // Check if current state accepts
-    if (dfa[current_state] != -1) {
-        *data = sz;
-        return dfa[current_state]; // return token ID
-    }
-    
-    return -1; // no match
+    *data = sz;
+    return -1;  // No valid match found
 }
 
 int main() {

@@ -122,14 +122,14 @@ static class Program
             //dfa.RenderToFile(@"..\..\..\dfa.svg");
             var xformed = false;
 
-            dfa.RenderToFile(@"..\..\..\dfa.jpg");
+            //dfa.RenderToFile(@"..\..\..\dfa.jpg");
             if (Enc != Encoding.UTF32)
             {
                 Console.Error.Write($"Transforming to {Enc.EncodingName}...");
                 dfa = DfaEncodingTransform.Transform(dfa, Enc);
                 xformed = true;
             }
-            dfa.RenderToFile(@"..\..\..\xdfa.jpg");
+            //dfa.RenderToFile(@"..\..\..\xdfa.jpg");
 
             if (xformed)
             {

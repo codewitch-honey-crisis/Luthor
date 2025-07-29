@@ -1960,6 +1960,9 @@ namespace LutherTest
             else if (enc == Encoding.UTF32)
             {
                 return TestUtf32Dfa(startState, input);
+            } else if(enc.IsSingleByte==false)
+            {
+                throw new NotSupportedException("This encoding cannot be used with Luthor");
             }
             var bytes = enc.GetBytes(input);
             var currentState = startState;

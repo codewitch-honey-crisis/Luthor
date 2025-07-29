@@ -17,7 +17,6 @@ namespace Luthor
             var stateMap = new Dictionary<Dfa, Dfa>();
             var intermediateStates = new Dictionary<string, Dfa>();
 
-
             // Get all states in the original DFA
             var allStates = unicodeDfa.FillClosure();
 
@@ -67,8 +66,8 @@ namespace Luthor
                 return;
             }
 
-            // Convert the codepoint range to UTF-8 patterns
-            var utf8Patterns = ConvertCodepointRangeToUtf8Patterns(minCodepoint, maxCodepoint);
+            // Convert the codepoint range to UTF-8 patterns efficiently
+            var utf8Patterns = ConvertCodepointRangeToUtf8PatternsOptimized(minCodepoint, maxCodepoint);
 
             // For each pattern, create the necessary state chain
             foreach (var pattern in utf8Patterns)
@@ -86,8 +85,8 @@ namespace Luthor
             {
                 var byteRange = pattern.ByteRanges[i];
 
-                // Create a unique key for this intermediate state
-                var stateKey = CreateIntermediateStateKey(fromState, originalDestState, pattern, i);
+                // Create a shared key for intermediate states based on remaining pattern
+                var stateKey = CreateSharedIntermediateStateKey(pattern, i);
 
                 Dfa nextState;
                 if (!intermediateStates.TryGetValue(stateKey, out nextState))
@@ -97,7 +96,6 @@ namespace Luthor
                     // Mark as intermediate (not accepting)
                     nextState.Attributes["AcceptSymbol"] = -1;
                     nextState.Attributes["IsIntermediate"] = true;
-                    nextState.Attributes["IntermediateFor"] = $"{fromState.GetHashCode()}->{originalDestState.GetHashCode()}";
 
                     intermediateStates[stateKey] = nextState;
                 }
@@ -116,11 +114,12 @@ namespace Luthor
             }
         }
 
-        private static string CreateIntermediateStateKey(Dfa fromState, Dfa originalDestState, Utf8BytePattern pattern, int byteIndex)
+        private static string CreateSharedIntermediateStateKey(Utf8BytePattern pattern, int byteIndex)
         {
-            // Create a unique key that identifies this specific intermediate state
-            var patternStr = string.Join(",", pattern.ByteRanges.Take(byteIndex + 1).Select(br => $"{br.Min:X2}-{br.Max:X2}"));
-            return $"{fromState.GetHashCode()}->{originalDestState.GetHashCode()}:byte{byteIndex}:{patternStr}";
+            // Create a key based on the remaining pattern structure only
+            // This allows sharing of intermediate states across different source states
+            var remainingPattern = string.Join(",", pattern.ByteRanges.Skip(byteIndex + 1).Select(br => $"{br.Min:X2}-{br.Max:X2}"));
+            return $"intermediate:byte{byteIndex}:remaining:{remainingPattern}";
         }
 
         private static Dfa GetMappedState(Dfa originalState, Dictionary<Dfa, Dfa> stateMap)
@@ -145,14 +144,14 @@ namespace Luthor
             return newState;
         }
 
-        private static List<Utf8BytePattern> ConvertCodepointRangeToUtf8Patterns(int minCodepoint, int maxCodepoint)
+        private static List<Utf8BytePattern> ConvertCodepointRangeToUtf8PatternsOptimized(int minCodepoint, int maxCodepoint)
         {
             var patterns = new List<Utf8BytePattern>();
             var validRanges = SplitAroundSurrogates(minCodepoint, maxCodepoint);
 
             foreach (var (rangeMin, rangeMax) in validRanges)
             {
-                
+                // Group by UTF-8 length and process each length efficiently
                 var currentMin = rangeMin;
                 while (currentMin <= rangeMax)
                 {
@@ -160,11 +159,10 @@ namespace Luthor
                     int maxForLength = GetMaxCodepointForUtf8Length(utf8Length);
                     int currentMax = Math.Min(rangeMax, maxForLength);
 
-                    
-                    var subPatterns = GenerateUtf8PatternsForRange(currentMin, currentMax, utf8Length);
+                    // Generate patterns for this UTF-8 length range
+                    var lengthPatterns = GenerateUtf8PatternsForLength(currentMin, currentMax, utf8Length);
+                    patterns.AddRange(lengthPatterns);
 
-                    
-                    patterns.AddRange(subPatterns);
                     currentMin = currentMax + 1;
                 }
             }
@@ -186,41 +184,41 @@ namespace Luthor
             // Split around surrogates
             if (minCodepoint < 0xD800)
             {
-                // Add range before surrogates
                 ranges.Add((minCodepoint, Math.Min(maxCodepoint, 0xD7FF)));
             }
 
             if (maxCodepoint > 0xDFFF)
             {
-                // Add range after surrogates
                 ranges.Add((Math.Max(minCodepoint, 0xE000), maxCodepoint));
             }
 
             return ranges;
         }
 
-        private static List<Utf8BytePattern> GenerateUtf8PatternsForRange(int minCodepoint, int maxCodepoint, int utf8Length)
+        private static List<Utf8BytePattern> GenerateUtf8PatternsForLength(int minCodepoint, int maxCodepoint, int utf8Length)
         {
             if ((minCodepoint >= 0xD800 && minCodepoint <= 0xDFFF) ||
                 (maxCodepoint >= 0xD800 && maxCodepoint <= 0xDFFF))
             {
-                throw new InvalidOperationException($"Surrogate codepoints are not valid: [{minCodepoint:X}-{maxCodepoint:X}]");
+                throw new InvalidOperationException($"Surrogate codepoints should have been filtered out: [{minCodepoint:X}-{maxCodepoint:X}]");
             }
 
             var patterns = new List<Utf8BytePattern>();
 
             if (utf8Length == 1)
             {
+                // Single byte case
                 var pattern = new Utf8BytePattern();
                 pattern.ByteRanges.Add(new Utf8ByteRange((byte)minCodepoint, (byte)maxCodepoint));
                 patterns.Add(pattern);
             }
             else if (utf8Length == 2)
             {
+                // 2-byte UTF-8: optimize by grouping by first byte
                 var minBytes = Encoding.UTF8.GetBytes(char.ConvertFromUtf32(minCodepoint));
                 var maxBytes = Encoding.UTF8.GetBytes(char.ConvertFromUtf32(maxCodepoint));
 
-                // Split by first byte for 2-byte sequences too
+                // Group by first byte to minimize patterns
                 for (byte firstByte = minBytes[0]; firstByte <= maxBytes[0]; firstByte++)
                 {
                     var pattern = new Utf8BytePattern();
@@ -236,11 +234,11 @@ namespace Luthor
             }
             else if (utf8Length == 3)
             {
-                // 3-byte UTF-8: Handle encoding constraints mathematically
+                // 3-byte UTF-8: Handle encoding constraints properly
                 var minBytes = Encoding.UTF8.GetBytes(char.ConvertFromUtf32(minCodepoint));
                 var maxBytes = Encoding.UTF8.GetBytes(char.ConvertFromUtf32(maxCodepoint));
 
-                // Split by first byte due to UTF-8 encoding rules
+                // Group by first byte due to UTF-8 encoding rules
                 for (byte firstByte = minBytes[0]; firstByte <= maxBytes[0]; firstByte++)
                 {
                     var pattern = new Utf8BytePattern();
@@ -273,11 +271,11 @@ namespace Luthor
             }
             else if (utf8Length == 4)
             {
-                // Similar mathematical approach for 4-byte sequences
-                // (Implementation similar to 3-byte case)
+                // 4-byte UTF-8: Similar to 3-byte but simpler constraints
                 var minBytes = Encoding.UTF8.GetBytes(char.ConvertFromUtf32(minCodepoint));
                 var maxBytes = Encoding.UTF8.GetBytes(char.ConvertFromUtf32(maxCodepoint));
 
+                // For now, use a single pattern approach for 4-byte sequences
                 var pattern = new Utf8BytePattern();
                 for (int i = 0; i < 4; i++)
                 {
@@ -289,70 +287,6 @@ namespace Luthor
             return patterns;
         }
 
-        private static Utf8BytePattern GenerateMultiByteUtf8Pattern(int minCodepoint, int maxCodepoint, int utf8Length)
-        {
-            var pattern = new Utf8BytePattern();
-
-            // Get the UTF-8 encoding for the range endpoints
-            var minBytes = Encoding.UTF8.GetBytes(char.ConvertFromUtf32(minCodepoint));
-            var maxBytes = Encoding.UTF8.GetBytes(char.ConvertFromUtf32(maxCodepoint));
-
-            // Ensure consistent encoding length
-            if (minBytes.Length != utf8Length || maxBytes.Length != utf8Length)
-            {
-                throw new InvalidOperationException($"Inconsistent UTF-8 encoding lengths for range [{minCodepoint:X}-{maxCodepoint:X}]");
-            }
-
-            // Calculate byte ranges for each position
-            for (int bytePos = 0; bytePos < utf8Length; bytePos++)
-            {
-                var (minByte, maxByte) = CalculateByteRangeForPosition(minCodepoint, maxCodepoint, bytePos, utf8Length);
-                pattern.ByteRanges.Add(new Utf8ByteRange(minByte, maxByte));
-            }
-
-            return pattern;
-        }
-
-        private static (byte min, byte max) CalculateByteRangeForPosition(int minCodepoint, int maxCodepoint, int bytePos, int utf8Length)
-        {
-            // Get the UTF-8 encoding for the range endpoints
-            var minBytes = Encoding.UTF8.GetBytes(char.ConvertFromUtf32(minCodepoint));
-            var maxBytes = Encoding.UTF8.GetBytes(char.ConvertFromUtf32(maxCodepoint));
-
-            if (minBytes.Length != utf8Length || maxBytes.Length != utf8Length)
-            {
-                throw new InvalidOperationException($"Inconsistent UTF-8 encoding lengths for range [{minCodepoint:X}-{maxCodepoint:X}]");
-            }
-
-            byte minByte = minBytes[bytePos];
-            byte maxByte = maxBytes[bytePos];
-
-            // For large ranges, we need to be more careful about intermediate values
-            // Sample some points in between to ensure we capture the full range
-            if (maxCodepoint - minCodepoint > 100)
-            {
-                int sampleCount = Math.Min(50, maxCodepoint - minCodepoint + 1);
-                int step = Math.Max(1, (maxCodepoint - minCodepoint + 1) / sampleCount);
-
-                for (int cp = minCodepoint; cp <= maxCodepoint; cp += step)
-                {
-                    // SKIP SURROGATE CODEPOINTS - they are not valid Unicode scalar values
-                    if (cp >= 0xD800 && cp <= 0xDFFF)
-                    {
-                        continue;
-                    }
-
-                    var bytes = Encoding.UTF8.GetBytes(char.ConvertFromUtf32(cp));
-                    if (bytes.Length == utf8Length && bytePos < bytes.Length)
-                    {
-                        minByte = Math.Min(minByte, bytes[bytePos]);
-                        maxByte = Math.Max(maxByte, bytes[bytePos]);
-                    }
-                }
-            }
-
-            return (minByte, maxByte);
-        }
         private static int GetUtf8Length(int codepoint)
         {
             if (codepoint < 0x80) return 1;

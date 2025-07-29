@@ -114,28 +114,28 @@ static class Program
                 dfa.RenderToFile(Graph.FullName);
             }
             var len = dfa.GetArrayLength();
-            Console.Error.Write("Minimizing...");
-            dfa = dfa.ToMinimized();
-            var mlen = dfa.GetArrayLength();
-            Console.Error.WriteLine($"done! {100-(mlen * 100 / len)}% size savings.");
-            Console.Error.WriteLine($"Minimized machine has {dfa.FillClosure().Count} states.");
-            dfa.RenderToFile(@"..\..\..\dfa.jpg");
+            //Console.Error.Write("Minimizing...");
+            //dfa = dfa.ToMinimized();
+            //var mlen = dfa.GetArrayLength();
+            //Console.Error.WriteLine($"done! {100-(mlen * 100 / len)}% size savings.");
+            //Console.Error.WriteLine($"Minimized machine has {dfa.FillClosure().Count} states.");
+            //dfa.RenderToFile(@"..\..\..\dfa.svg");
             var xformed = false;
-            
-            
+
+            dfa.RenderToFile(@"..\..\..\dfa.jpg");
             if (Enc != Encoding.UTF32)
             {
                 Console.Error.Write($"Transforming to {Enc.EncodingName}...");
                 dfa = DfaEncodingTransform.Transform(dfa, Enc);
                 xformed = true;
             }
-            
+            dfa.RenderToFile(@"..\..\..\xdfa.jpg");
+
             if (xformed)
             {
                 var tlen = dfa.GetArrayLength();
-                var minSize = (mlen * 100 / len);
                 var finalSize = (tlen * 100 / len);
-                var expansionCost = (tlen * 100 / mlen) - 100;
+                var expansionCost = (tlen * 100 / len) - 100;
                 string sizeChange = expansionCost >= 0
                     ? $"{expansionCost}% expansion cost"
                     : $"{Math.Abs(expansionCost)}% size reduction";

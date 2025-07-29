@@ -18,7 +18,7 @@
     },
     "Testing": {
       "commandName": "Project",
-      "commandLineArgs": "//.*? --graph ..\\..\\..\\graph.jpg"
+      "commandLineArgs": "//.*?$ --graph ..\\..\\..\\graph.jpg"
     },
     "Demo.lex latin1": {
       "commandName": "Project",

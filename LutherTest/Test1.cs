@@ -23,11 +23,11 @@ namespace LutherTest
                 return (null, null, null, null);
             }
             var unminDfa = expr.ToDfa();
-            var utf32Dfa = unminDfa.ToMinimized();
-            utf32Dfa.RenderToFile(@"C:\Users\gazto\Pictures\test.jpg");
-            var utf16Dfa = DfaUtf16Transformer.TransformToUtf16(utf32Dfa);
-            var utf8Dfa = DfaUtf8Transformer.TransformToUtf8(utf32Dfa);
-            return (unminDfa, utf32Dfa, utf16Dfa, utf8Dfa);
+            
+            unminDfa.RenderToFile(@"C:\Users\gazto\Pictures\test.jpg");
+            var utf16Dfa = DfaUtf16Transformer.TransformToUtf16(unminDfa);
+            var utf8Dfa = DfaUtf8Transformer.TransformToUtf8(unminDfa);
+            return (unminDfa, unminDfa, utf16Dfa, utf8Dfa);
         }
         void TestMatches(Runner runner, Dfa dfa, IEnumerable<(string Text, int ExpectingSymbol)> inputs)
         {
@@ -38,6 +38,14 @@ namespace LutherTest
                 var exp2 = acc == -1 ? "<no match>" : acc.ToString();
                 var pass = acc == input.ExpectingSymbol ? "pass" : "fail";
                 Console.WriteLine($"Matching {input.Text}\t: Expected: {exp}, Result: {exp2}, Test: {pass}");
+                if(input.ExpectingSymbol!=acc)
+                {
+                    Console.WriteLine($"== TEST FAILURE == on {runner.Method.Name} for text: {input.Text}");
+                    //Console.WriteLine(Environment.CurrentDirectory);
+                    Console.WriteLine("Failure dfa rendered to fail.jpg");
+                    dfa.RenderToFile(@"..\..\..\fail.jpg",true);
+                    dfa.ToMinimized().RenderToFile(@"..\..\..\fail_min.jpg",true);
+                }
                 Assert.AreEqual(input.ExpectingSymbol, acc);
             }
         }
@@ -52,9 +60,6 @@ namespace LutherTest
                 Console.WriteLine($"  Running ${_runners[0].Name} Native DFA...");
                 TestMatches(_runners[0].Matcher, dfas.UnminDfa, inputs);
                 Console.WriteLine();
-                Console.WriteLine($"  Running ${_runners[0].Name} Minimized DFA...");
-                TestMatches(_runners[0].Matcher, dfas.Utf32Dfa, inputs);
-                Console.WriteLine();
                 Console.WriteLine($"  Running ${_runners[1].Name} UTF-16 DFA...");
                 TestMatches(_runners[1].Matcher, dfas.Utf16Dfa, inputs);
                 Console.WriteLine();
@@ -64,15 +69,9 @@ namespace LutherTest
 
                 Console.WriteLine();
             }
-            catch (Exception ex)
+            catch 
             {
-                var cl = dfas.Utf32Dfa.FillClosure();
-                var q2 = cl[2];
-                Console.WriteLine($"State q2 has {q2.Transitions.Count} transitions:");
-                foreach (var t in q2.Transitions)
-                    Console.WriteLine($"  [{t.Min}-{t.Max}] -> q{cl.IndexOf(t.To)}");
-
-
+                
                 throw;
             }
         }
@@ -1609,6 +1608,9 @@ namespace LutherTest
                 {
                     foreach (var transition in currentState.Transitions)
                     {
+                        var dstStateIndex = closure.IndexOf(transition.To);
+                        Console.WriteLine($"DEBUG: has q{currentStateIndex}->q{dstStateIndex} on {transition}");
+                        //currentStateIndex
                         int codepoint = codepoints[position];
                         if (codepoint >= transition.Min && codepoint <= transition.Max)
                         {
@@ -1636,16 +1638,24 @@ namespace LutherTest
                     // Check if current state is accepting
                     if (currentState.IsAccept)
                     {
-                        
+
                         // Check anchor conditions
                         if (currentState.Attributes.ContainsKey("AnchorMask"))
                         {
                             var anchorMask = (int)currentState.Attributes["AnchorMask"];
-                            
+
                             if (CheckAnchorConditions(currentState, atLineStart, atLineEnd))
                             {
-                                Console.WriteLine($"ACCEPTED: {currentState.AcceptSymbol}");
-                                return currentState.AcceptSymbol;
+                                if (position == codepoints.Length)
+                                {
+                                    Console.WriteLine($"ACCEPTED: {currentState.AcceptSymbol}");
+                                    return currentState.AcceptSymbol;
+                                }
+                                else
+                                {
+                                    Console.WriteLine("REJECTED: state is accepting but with input remaining");
+                                    return -1;
+                                }
                             }
                             else
                             {
@@ -1655,8 +1665,15 @@ namespace LutherTest
                         }
                         else
                         {
-                            Console.WriteLine($"ACCEPTED: {currentState.AcceptSymbol}");
-                            return currentState.AcceptSymbol;
+                            if (position == codepoints.Length) { 
+                                Console.WriteLine($"ACCEPTED: {currentState.AcceptSymbol}");
+                                return currentState.AcceptSymbol;
+                            }
+                            else
+                            {
+                                Console.WriteLine("REJECTED: state is accepting but with input remaining");
+                                return -1;
+                            }
                         }
                     }
                     else
@@ -1751,10 +1768,19 @@ namespace LutherTest
                         {
                             var anchorMask = (int)currentState.Attributes["AnchorMask"];
 
+
                             if (CheckAnchorConditions(currentState, atLineStart, atLineEnd))
                             {
-                                Console.WriteLine($"ACCEPTED: {currentState.AcceptSymbol}");
-                                return currentState.AcceptSymbol;
+                                if (position == input.Length)
+                                {
+                                    Console.WriteLine($"ACCEPTED: {currentState.AcceptSymbol}");
+                                    return currentState.AcceptSymbol;
+                                }
+                                else
+                                {
+                                    Console.WriteLine("REJECTED: state is accepting but with input remaining");
+                                    return -1;
+                                }
                             }
                             else
                             {
@@ -1764,8 +1790,16 @@ namespace LutherTest
                         }
                         else
                         {
-                            Console.WriteLine($"ACCEPTED: {currentState.AcceptSymbol}");
-                            return currentState.AcceptSymbol;
+                            if (position == input.Length)
+                            {
+                                Console.WriteLine($"ACCEPTED: {currentState.AcceptSymbol}");
+                                return currentState.AcceptSymbol;
+                            }
+                            else
+                            {
+                                Console.WriteLine("REJECTED: state is accepting but with input remaining");
+                                return -1;
+                            }
                         }
                     }
                     else
@@ -1858,8 +1892,17 @@ namespace LutherTest
                         
                             if (CheckAnchorConditions(currentState, atLineStart, atLineEnd))
                             {
-                                Console.WriteLine($"ACCEPTED: {currentState.AcceptSymbol}");
-                                return currentState.AcceptSymbol;
+                                if (position == bytes.Length)
+                                {
+                                    Console.WriteLine($"ACCEPTED: {currentState.AcceptSymbol}");
+                                    return currentState.AcceptSymbol;
+                                }
+                                else
+                                {
+                                    Console.WriteLine("REJECTED: state is accepting but with input remaining");
+                                    return -1;
+                                }
+                                
                             }
                             else
                             {
@@ -1869,8 +1912,17 @@ namespace LutherTest
                         }
                         else
                         {
-                            Console.WriteLine($"ACCEPTED: {currentState.AcceptSymbol}");
-                            return currentState.AcceptSymbol;
+                            if (position == bytes.Length)
+                            {
+                                Console.WriteLine($"ACCEPTED: {currentState.AcceptSymbol}");
+                                return currentState.AcceptSymbol;
+                            }
+                            else
+                            {
+                                Console.WriteLine("REJECTED: state is accepting but with input remaining");
+                                return -1;
+                            }
+                            
                         }
                     }
                     else

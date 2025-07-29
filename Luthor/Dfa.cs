@@ -1260,7 +1260,7 @@ namespace Luthor
             return indexToStateMap[0];
         }
 
-        public void RenderToFile(string filename)
+        public void RenderToFile(string filename, bool draft = false)
         {
             string args = "-T";
             string ext = Path.GetExtension(filename);
@@ -1290,7 +1290,14 @@ namespace Luthor
                 ext,
                 StringComparison.InvariantCultureIgnoreCase))
                 args += "svg";
-            args += " -Gdpi=300";
+            if (draft)
+            {
+                args += " -Gdpi=150";
+            }
+            else
+            {
+                args += " -Gdpi=300";
+            }
             args += " -o\"" + filename + "\"";
 
             var psi = new ProcessStartInfo("dot", args)

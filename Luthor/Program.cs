@@ -4,6 +4,12 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Text;
 using Luthor;
+enum ArrayType
+{
+    auto = 0,
+    ranged = 1,
+    unranged = 2
+}
 public class EncodingConverter : TypeConverter
 {
     public override object? ConvertFrom(ITypeDescriptorContext? context, CultureInfo? culture, object value)
@@ -35,6 +41,8 @@ static class Program
     static string? Input = null;
     [CmdArg(Name = "enc",Optional =true,ElementName ="encoding",ElementConverter ="EncodingConverter",Description ="The encoding to use (ASCII, UTF-8, UTF-16, or UTF-32, or a single byte encoding). Defaults to UTF-8")]
     static Encoding Enc = Encoding.UTF8;
+    [CmdArg(Name = "array",Optional =true, ElementName="array",Description ="The type of array to generate, ranged or unranged. Defaults to auto which chooses the shorted length")]
+    static ArrayType array = ArrayType.auto;
     [CmdArg(Name = "graph", Optional = true, ElementName = "graph", Description = "Generate a DFA state graph to the specified file (requires GraphViz)")]
     static FileInfo Graph;
     [CmdArg(Name = "draft", Optional = true, ElementName = "draft", Description = "Generate a DFA state graph draft to the specified file (requires GraphViz)")]
@@ -183,24 +191,33 @@ static class Program
 
             }
             Console.Error.WriteLine();
-            var array = dfa.ToArray();
+            int[] arr;
+            switch(array)
+            {
+                case ArrayType.ranged:
+                    arr = dfa.ToRangeArray(); break;
+                case ArrayType.unranged:
+                    arr = dfa.ToNonRangeArray(); break;
+                default:
+                    arr = dfa.ToArray(); break;
+            }
 
-            var width = GetArrayWidth(array);
+            var width = GetArrayWidth(arr);
             var label = (width!=1)?"bytes":"byte";
 
-            Console.Error.WriteLine($"The array takes a minimum of {width*array.Length} bytes to store");
+            Console.Error.WriteLine($"The array takes a minimum of {width*arr.Length} bytes to store");
             Console.Error.WriteLine();
-            if (Dfa.IsRangeArray(array))
+            if (Dfa.IsRangeArray(arr))
             {
-                Console.Error.WriteLine($"Emitting ranged jump table array with a length of {array.Length} and an element width of {width} {label}");
+                Console.Error.WriteLine($"Emitting ranged jump table array with a length of {arr.Length} and an element width of {width} {label}");
             } else
             {
-                Console.Error.WriteLine($"Emitting non-ranged jump table array with a length of {array.Length} and an element width of {width} {label}");
+                Console.Error.WriteLine($"Emitting non-ranged jump table array with a length of {arr.Length} and an element width of {width} {label}");
             }
             Console.Error.WriteLine();
             Console.Error.WriteLine("* values do not reflect the relative width of the elements, only the total length of the array.");
             Console.Error.WriteLine();
-            PrintArray(array);
+            PrintArray(arr);
         }
     }
 }

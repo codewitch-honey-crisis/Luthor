@@ -266,11 +266,13 @@ A DFA lexer generator tool
 
 Usage:
 
-luthor <input> [ --enc <encoding> ] [ --graph <graph> ]
+luthor <input> [ --enc <encoding> ] [ --array <array> ] [ --graph <graph> ] [ --draft <draft> ]
 
 <input>        The input expression or file to use
 <encoding>     The encoding to use (ASCII, UTF-8, UTF-16, or UTF-32, or a single byte encoding). Defaults to UTF-8
+<array>        The type of array to generate, ranged or unranged. Defaults to auto which chooses the shorted length
 <graph>        Generate a DFA state graph to the specified file (requires GraphViz)
+<draft>        Generate a DFA state graph draft to the specified file (requires GraphViz)
 
 luthor [ --? ]
 

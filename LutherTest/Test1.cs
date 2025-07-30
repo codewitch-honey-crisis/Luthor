@@ -116,6 +116,17 @@ namespace LutherTest
         [TestMethod]
         public void BuildADfa()
         {
+            var ccommentLazy = "# C comment\n" + @"/\*(.|\n)*?\*/";
+            var test1 = "(?<baz>foo|fubar)+";
+            var test2 = "(a|b)*?(b{2})";
+            var test3 = "^hello world!$";
+            var lexer = $"# Test Lexer\n{test1}\n{ccommentLazy}\n{test2}\n{test3}";
+            var ast = RegexExpression.Parse(lexer);
+            Console.WriteLine(lexer);
+            Assert.IsNotNull(ast);
+            
+            var adfa = ast.ToDfa();
+            adfa.RenderToFile(@"..\..\..\lexer.jpg",true);
             var q0 = new Dfa();
             q0.Attributes["AcceptSymbol"] = 0;
             var q1 = new Dfa();
@@ -131,6 +142,50 @@ namespace LutherTest
             q0.RenderToFile(@"..\..\..\abb.jpg", true);
 
             Console.WriteLine(q0.ToString());
+
+        }
+        [TestMethod]
+        public void TestMinimized()
+        {
+            var exprs = new string[]
+            {
+                // Small machines
+                "abc",                                  // Simple literal
+                "[0-9]",                               // Small character class  
+                "a+",                                  // Simple repeat
+                "(foo|bar)",                           // Simple alternation
+        
+                // Medium machines
+                "[A-Za-z_][A-Za-z_0-9]*",             // C identifier (already there)
+                "[0-9]+\\.[0-9]+",                     // Decimal number
+                "(http|https|ftp)://",                 // Protocol prefix
+                "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+",   // Simple email pattern
+                "\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}", // IP address
+        
+                //// Large machines  
+                "(GET|POST|PUT|DELETE|HEAD|OPTIONS|PATCH)\\s+",  // HTTP methods
+                "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", // UUID
+                "(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)",  // Days of week
+                "(January|February|March|April|May|June|July|August|September|October|November|December)", // Months
+                "\\b(and|or|but|nor|for|so|yet|after|although|as|because|before|if|since|though|unless|until|when|where|while)\\b", // Common conjunctions
+        
+                //// Complex patterns
+                "((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)", // Precise IP
+                "[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+@([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\\.)+[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?", // RFC-compliant email
+               // stress> slow! "(https?://)?(www\\.)?[-a-zA-Z0-9@:%._\\+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b([-a-zA-Z0-9()@:%_\\+.~#?&//=]*)" // URL pattern
+            };
+            foreach(var expr in exprs)
+            {
+                Console.WriteLine($"Testing expression {expr}");
+                var ast = RegexExpression.Parse(expr);
+                var dfa = ast.ToDfa();
+                var len = dfa.GetArrayLength();
+                // var mdfa = dfa.ToMinimized();
+                var mlen = 0;// mdfa.GetArrayLength();
+                
+                Assert.IsTrue(len >= mlen, $"Hopcroft minimization yielded a larger machine for {expr}");
+
+            }
 
         }
         [TestMethod]

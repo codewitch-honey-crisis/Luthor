@@ -275,6 +275,46 @@ namespace Luthor
 
     abstract partial class RegexExpression : ICloneable
     {
+        private int? _cachedHashCode;
+
+        public override int GetHashCode()
+        {
+            if (!_cachedHashCode.HasValue)
+            {
+                _cachedHashCode = GetHashCodeImpl(); // Your existing recursive logic
+            }
+            return _cachedHashCode.Value;
+        }
+        protected abstract int GetHashCodeImpl();
+        protected void InvalidateHashCode()
+        {
+            // Call this whenever the node is modified
+            _cachedHashCode = null;
+            
+        }
+
+        private WeakReference<RegexExpression> _parent;
+
+        public RegexExpression Parent
+        {
+            get
+            {
+                if(_parent==null)
+                {
+                    return null;
+                }
+                RegexExpression result;
+                if(!_parent.TryGetTarget(out result))
+                {
+                    return null;
+                }
+                return result;
+            }
+        }
+        public void SetParent(RegexExpression parent)
+        {
+            _parent = new WeakReference<RegexExpression>(parent);
+        }
         /// <summary>
         /// Indicates the 0 based position on which the regular expression was found
         /// </summary>
@@ -424,27 +464,14 @@ namespace Luthor
             return false;
         }
         
-        public static RegexExpression? TryGetParent(RegexExpression root, RegexExpression target)
-        {
-            RegexExpression? result = null;
-            root.Visit((parent, expression, childIndex, level) =>
-            {
-                if (object.ReferenceEquals(expression, target))
-                {
-                    result = parent;
-                    return false;
-                }
-                return true;
-            });
-            return result;
-        }
+       
         public static RegexRepeatExpression? TryGetAncestorRepeat(RegexExpression root, RegexExpression target)
         {
             // slow
             RegexExpression? parent = target;
             do
             {
-                parent = TryGetParent(root, parent);
+                parent = parent.Parent;
                 if(parent is RegexRepeatExpression repeat)
                 {
                     return repeat;
@@ -454,23 +481,14 @@ namespace Luthor
         }
         public static RegexRepeatExpression? TryGetParentRepeat(RegexExpression root, RegexExpression target)
         {
-            RegexRepeatExpression? result = null;
-            root.Visit((parent, expression, childIndex, level) =>
-            {
-                if (object.ReferenceEquals(expression, target) && parent is RegexRepeatExpression repeat)
-                {
-                    result = repeat;
-                }
-                return !object.ReferenceEquals(expression, target);
-            });
-            return result;
+            return target.Parent as RegexRepeatExpression;
         }
         public static RegexRepeatExpression? GetAncestorLazyRepeat(RegexExpression root, RegexExpression target)
         {
             RegexExpression? parent = target;
             do
             {
-                parent = TryGetParent(root, parent);
+                parent = parent.Parent;
                 if (parent is RegexRepeatExpression repeat && repeat.IsLazy)
                 {
                     return repeat;
@@ -656,7 +674,7 @@ namespace Luthor
                         {
                             expr.Comments.AddRange(comments);
                             comments.Clear();
-                            result.Rules.Add(expr);
+                            result.AddRule(expr);
                         }
                     }
                 }
@@ -1677,6 +1695,7 @@ namespace Luthor
     /// </summary>
     partial class RegexTerminatorExpression : RegexExpression
     {
+        readonly object _key = new object();
         public override bool IsLeaf => true;
         /// <summary>
         /// Indicates whether or not this statement is a single element or not
@@ -1719,7 +1738,10 @@ namespace Luthor
             CloneMetadata(result);
             return result;
         }
-
+        protected override int GetHashCodeImpl()
+        {
+            return _key.GetHashCode();
+        }
     }
     /// <summary>
     /// Represents a comment node
@@ -1833,11 +1855,46 @@ namespace Luthor
 
     abstract partial class RegexBinaryExpression : RegexExpression
     {
+        RegexExpression? _left = null;
         /// <summary>
         /// Indicates the left expression
         /// </summary>
-        public RegexExpression? Left { get; set; } = null;
-        public RegexExpression? Right { get; set; } = null;
+        public RegexExpression? Left
+        {
+            get => _left;
+            set
+            {
+                if (_left != null)
+                {
+                    _left.SetParent(null);
+                }
+                _left = value;
+                if (_left != null)
+                {
+                    _left.SetParent(this);
+                }
+            }
+        }
+        RegexExpression? _right = null;
+        /// <summary>
+        /// Indicates the right expression
+        /// </summary>
+        public RegexExpression? Right
+        {
+            get => _right;
+            set
+            {
+                if (_right != null)
+                {
+                    _right.SetParent(null);
+                }
+                _right = value;
+                if (_right != null)
+                {
+                    _right.SetParent(this);
+                }
+            }
+        }
     }
     /// <summary>
     /// Represents an expression with a single target expression
@@ -1845,10 +1902,24 @@ namespace Luthor
 
     abstract partial class RegexUnaryExpression : RegexExpression
     {
+        RegexExpression? _expression = null;
         /// <summary>
         /// Indicates the target expression
         /// </summary>
-        public RegexExpression? Expression { get; set; } = null;
+        public RegexExpression? Expression { get => _expression;
+            set
+            {
+                if(_expression!=null)
+                {
+                    _expression.SetParent(null);
+                }
+                _expression = value;
+                if(_expression != null)
+                {
+                    _expression.SetParent(this);
+                }
+            }
+        }
 
     }
     /// <summary>
@@ -1878,21 +1949,36 @@ namespace Luthor
                 return false;
             }
         }
+        readonly List<RegexExpression> _rules = new List<RegexExpression>();
         /// <summary>
         /// Indicates the rules in this expression
         /// </summary>
-        public List<RegexExpression> Rules { get; } = new List<RegexExpression>();
+        public IReadOnlyList<RegexExpression> Rules { get=>_rules; } 
+
+        public void AddRule(RegexExpression rule)
+        {
+            if(rule==null)
+            {
+                return;
+            }
+            rule.SetParent(this);
+            _rules.Add(rule);
+        }
+        public void AddRules(IEnumerable<RegexExpression> rules)
+        {
+            foreach (var rule in rules) { AddRule(rule); }
+        }
 
         /// <summary>
         /// Creates a lexer expression with the specified rules
         /// </summary>
         /// <param name="rules">The rules/param>
-        public RegexLexerExpression(IEnumerable<RegexExpression> rules) { Rules.AddRange(rules); }
+        public RegexLexerExpression(IEnumerable<RegexExpression> rules) { AddRules(rules); }
         /// <summary>
         /// Creates a lexer expression with the specified rules
         /// </summary>
         /// <param name="rules">The rules/param>
-        public RegexLexerExpression(params RegexExpression[] rules) { if (rules.Length > 0) Rules.AddRange(rules); }
+        public RegexLexerExpression(params RegexExpression[] rules) { if (rules.Length > 0) AddRules(rules); }
 
         /// <summary>
         /// Appends the textual representation to a <see cref="StringBuilder"/>
@@ -1961,7 +2047,7 @@ namespace Luthor
         /// Computes a hash code for this expression
         /// </summary>
         /// <returns>A hash code for this expression</returns>
-        public override int GetHashCode()
+        protected override int GetHashCodeImpl()
         {
             var result = Location.GetHashCode();
             foreach (var rule in Rules)
@@ -2127,7 +2213,7 @@ namespace Luthor
         /// Computes a hash code for this expression
         /// </summary>
         /// <returns>A hash code for this expression</returns>
-        public override int GetHashCode()
+        protected override int GetHashCodeImpl()
             => Location.GetHashCode() ^ ((Value != null) ? Value.GetHashCode() : 0);
         /// <summary>
         /// Indicates whether or not two expression are the same
@@ -2244,7 +2330,7 @@ namespace Luthor
         /// Computes a hash code for this expression
         /// </summary>
         /// <returns>A hash code for this expression</returns>
-        public override int GetHashCode()
+        protected override int GetHashCodeImpl()
             => Location.GetHashCode() ^ Type.GetHashCode();
         /// <summary>
         /// Indicates whether or not two expression are the same
@@ -2847,7 +2933,7 @@ namespace Luthor
         /// Computes a hash code for this expression
         /// </summary>
         /// <returns>A hash code for this expression</returns>
-        public override int GetHashCode()
+        protected override int GetHashCodeImpl()
         {
             var result = HasNegatedRanges.GetHashCode();
             result ^= Location.GetHashCode();
@@ -3003,7 +3089,7 @@ namespace Luthor
         /// Computes a hash code for this expression
         /// </summary>
         /// <returns>A hash code for this expression</returns>
-        public override int GetHashCode()
+        protected override int GetHashCodeImpl()
         {
             var result = Location.GetHashCode();
             if (Left != null)
@@ -3242,7 +3328,7 @@ namespace Luthor
         /// Computes a hash code for this expression
         /// </summary>
         /// <returns>A hash code for this expression</returns>
-        public override int GetHashCode()
+        protected override int GetHashCodeImpl()
         {
             var result = Location.GetHashCode();
             if (Left != null)
@@ -3533,7 +3619,7 @@ namespace Luthor
         /// Computes a hash code for this expression
         /// </summary>
         /// <returns>A hash code for this expression</returns>
-        public override int GetHashCode()
+        protected override int GetHashCodeImpl()
         {
             var result = Location.GetHashCode() ^ Math.Max(MinOccurs, 0) ^ Math.Max(MaxOccurs, 0) ^ IsLazy.GetHashCode();
             if (null != Expression)

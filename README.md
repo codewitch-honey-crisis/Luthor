@@ -129,13 +129,13 @@ For each state:
 // Pattern: [A-Z__]+
 int dfa[] = {
     -1, 0, 1,        // State 0: not accepting, no anchors, 1 transition
-    11, 3,           // -> go to state 11 on 3 ranges:
+    11, 3,           // -> jump to index 11 on 3 ranges:
     65, 90,          //    A-Z (65-90)
     95, 95,          //    _ (95)  
     97, 122,         //    a-z (97-122)
     
     0, 0, 1,         // State 11: accepting (token 0), no anchors, 1 transition
-    11, 4,           // -> loop to state 11 on 4 ranges:
+    11, 4,           // -> jump to index 11 on 4 ranges:
     48, 57,          //    0-9 (48-57)
     65, 90,          //    A-Z (65-90)  
     95, 95,          //    _ (95)

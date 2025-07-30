@@ -179,10 +179,12 @@ namespace LutherTest
                 Console.WriteLine($"Testing expression {expr}");
                 var ast = RegexExpression.Parse(expr);
                 var dfa = ast.ToDfa();
+                Console.WriteLine($"Initial machine has {dfa.FillClosure().Count} states");
                 var len = dfa.GetArrayLength();
-                // var mdfa = dfa.ToMinimized();
-                var mlen = 0;// mdfa.GetArrayLength();
-                
+                var mdfa = dfa.ToMinimized();
+                Console.WriteLine($"Minimized machine has {mdfa.FillClosure().Count} states");
+                var mlen = mdfa.GetArrayLength();
+                Console.WriteLine($"Machine is %{100.0 - (100.0 * mlen / len):F1} smaller than the original");
                 Assert.IsTrue(len >= mlen, $"Hopcroft minimization yielded a larger machine for {expr}");
 
             }

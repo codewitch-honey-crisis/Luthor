@@ -158,16 +158,16 @@ namespace Luthor
 
 
             // Must have same lazy position information
-            var lazy1 = state1.Attributes.ContainsKey("LazyPositions") ? new HashSet<RegexExpression>((IEnumerable<RegexExpression>)state1.Attributes["LazyPositions"]) : new HashSet<RegexExpression>();
-            var lazy2 = state2.Attributes.ContainsKey("LazyPositions") ? new HashSet<RegexExpression>((IEnumerable<RegexExpression>)state2.Attributes["LazyPositions"]) : new HashSet<RegexExpression>();
-            if (!lazy1.SetEquals(lazy2))
-                return false;
+            //var lazy1 = state1.Attributes.ContainsKey("LazyPositions") ? new HashSet<RegexExpression>((IEnumerable<RegexExpression>)state1.Attributes["LazyPositions"]) : new HashSet<RegexExpression>();
+            //var lazy2 = state2.Attributes.ContainsKey("LazyPositions") ? new HashSet<RegexExpression>((IEnumerable<RegexExpression>)state2.Attributes["LazyPositions"]) : new HashSet<RegexExpression>();
+            //if (!lazy1.SetEquals(lazy2))
+            //    return false;
 
-            // Must have same regular positions 
-            var pos1 = state1.Attributes.ContainsKey("Positions") ? new HashSet<RegexExpression>((IEnumerable<RegexExpression>)state1.Attributes["Positions"]) : new HashSet<RegexExpression>();
-            var pos2 = state2.Attributes.ContainsKey("Positions") ? new HashSet<RegexExpression>((IEnumerable<RegexExpression>)state2.Attributes["Positions"]) : new HashSet<RegexExpression>();
-            if (!pos1.SetEquals(pos2))
-                return false;
+            //// Must have same regular positions 
+            //var pos1 = state1.Attributes.ContainsKey("Positions") ? new HashSet<RegexExpression>((IEnumerable<RegexExpression>)state1.Attributes["Positions"]) : new HashSet<RegexExpression>();
+            //var pos2 = state2.Attributes.ContainsKey("Positions") ? new HashSet<RegexExpression>((IEnumerable<RegexExpression>)state2.Attributes["Positions"]) : new HashSet<RegexExpression>();
+            //if (!pos1.SetEquals(pos2))
+            //    return false;
 
             return true;
         }

@@ -268,7 +268,7 @@ namespace Luthor
     /// <param name="level">The nexting level</param>
     /// <returns></returns>
 
-    delegate bool RegexVisitAction(RegexExpression parent, RegexExpression expression, int childIndex, int level);
+    delegate bool RegexVisitAction(RegexExpression? parent, RegexExpression expression, int childIndex, int level);
     /// <summary>
     /// Represents the common functionality of all regular expression elements
     /// </summary>
@@ -293,9 +293,9 @@ namespace Luthor
             
         }
 
-        private WeakReference<RegexExpression> _parent;
+        private WeakReference<RegexExpression>? _parent;
 
-        public RegexExpression Parent
+        public RegexExpression? Parent
         {
             get
             {
@@ -303,7 +303,7 @@ namespace Luthor
                 {
                     return null;
                 }
-                RegexExpression result;
+                RegexExpression? result;
                 if(!_parent.TryGetTarget(out result))
                 {
                     return null;
@@ -313,6 +313,11 @@ namespace Luthor
         }
         public void SetParent(RegexExpression parent)
         {
+            if(parent==null)
+            {
+                _parent = null;
+                return;
+            }
             _parent = new WeakReference<RegexExpression>(parent);
         }
         /// <summary>
@@ -428,7 +433,7 @@ namespace Luthor
             }
             throw new FormatException($"Unrecognized format specifier \"{format}\".");
         }
-        private bool _Visit(RegexExpression parent, RegexVisitAction action, int childIndex, int level)
+        private bool _Visit(RegexExpression? parent, RegexVisitAction action, int childIndex, int level)
         {
             if (action(parent, this, childIndex, level))
             {

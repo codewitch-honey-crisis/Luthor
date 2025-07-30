@@ -99,9 +99,9 @@ static class Program
     static string SafePrint(string s)
     {
         if (s == null) return "<null>";
-        if(s.Length > 40)
+        if(s.Length > 80)
         {
-            return s.Substring(0, 10) + "...<omitted>";
+            return s.Substring(0, 40) + "...<omitted>";
         }
         return s;
     }

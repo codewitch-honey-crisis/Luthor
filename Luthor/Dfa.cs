@@ -973,6 +973,7 @@ namespace Luthor
                 case '^':
                 case '-':
                 case '+':
+                case '*':
                 case '?':
                 case '(':
                 case ')':
@@ -1003,7 +1004,7 @@ namespace Luthor
                     return;
                 default:
                     var s = char.ConvertFromUtf32(@char);
-                    if (!char.IsLetterOrDigit(s, 0) && !char.IsSeparator(s, 0) && !char.IsPunctuation(s, 0) && !char.IsSymbol(s, 0))
+                    if (s != " " && !_IsPrintable(@char))
                     {
                         if (s.Length == 1)
                         {
@@ -1063,7 +1064,7 @@ namespace Luthor
                     return;
                 default:
                     var s = char.ConvertFromUtf32(rangeChar);
-                    if (!char.IsLetterOrDigit(s, 0) && !char.IsSeparator(s, 0) && !char.IsPunctuation(s, 0) && !char.IsSymbol(s, 0))
+                    if (s!=" " && !_IsPrintable(rangeChar))
                     {
                         if (s.Length == 1)
                         {

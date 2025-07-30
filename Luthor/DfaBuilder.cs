@@ -185,7 +185,7 @@ namespace Luthor
                 if (pos.IsLeaf)
                 {
                     // Use AST query to determine if this position is in a lazy context
-                    var lazyAncestor = RegexExpression.GetAncestorLazyRepeat(augmented, pos);
+                    var lazyAncestor = RegexExpression.GetAncestorLazyRepeat(pos);
                     lazyPositions[pos] = lazyAncestor != null;
 
                     //if (lazyPositions[pos])
@@ -619,11 +619,11 @@ namespace Luthor
             {
                 if (currentLazyPositions.Contains(sourcePos) || IsPositionLazy(sourcePos))
                 {
-                    var sourceLazyAncestor = RegexExpression.GetAncestorLazyRepeat(augmented, sourcePos);
+                    var sourceLazyAncestor = RegexExpression.GetAncestorLazyRepeat(sourcePos);
 
                     foreach (var targetPos in targetPositions)
                     {
-                        var targetLazyAncestor = RegexExpression.GetAncestorLazyRepeat(augmented, targetPos);
+                        var targetLazyAncestor = RegexExpression.GetAncestorLazyRepeat(targetPos);
 
                         // Propagate within same lazy scope
                         if (sourceLazyAncestor != null && sourceLazyAncestor == targetLazyAncestor)
@@ -724,8 +724,8 @@ namespace Luthor
 
         private bool IsInnerLazyLoop(RegexExpression fromPos, RegexExpression toPos)
         {
-            var fromLazyAncestor = RegexExpression.GetAncestorLazyRepeat(augmented, fromPos);
-            var toLazyAncestor = RegexExpression.GetAncestorLazyRepeat(augmented, toPos);
+            var fromLazyAncestor = RegexExpression.GetAncestorLazyRepeat(fromPos);
+            var toLazyAncestor = RegexExpression.GetAncestorLazyRepeat(toPos);
 
             // If both positions are inside the same lazy quantifier, this is an inner loop
             // that could cause greedy behavior - we want to eliminate these
@@ -768,7 +768,7 @@ namespace Luthor
                     // MUCH more restrictive: only trim if this is clearly a loop-back within same quantifier
                     foreach (var fromPos in fromPositions)
                     {
-                        var lazyAncestor = RegexExpression.GetAncestorLazyRepeat(augmented, fromPos);
+                        var lazyAncestor = RegexExpression.GetAncestorLazyRepeat(fromPos);
                         if (lazyAncestor == null) continue;
 
                         var ancestorLastPos = lazyAncestor.Expression?.GetLastPos(lastPosMap) ?? new HashSet<RegexExpression>();
@@ -796,25 +796,6 @@ namespace Luthor
             Log(2, $"Trimmed {trimmedCount} lazy backward edges from accepting states");
         }
         
-        private bool IsLazyBackwardEdge(HashSet<RegexExpression> fromPositions, DfaTransition transition)
-        {
-            var targetPositions = GetPositionsFromState(transition.To);
-            
-            foreach (var fromPos in fromPositions)
-            {
-                var lazyAncestor = RegexExpression.GetAncestorLazyRepeat(augmented, fromPos);
-                if (lazyAncestor == null) continue;
-
-                var ancestorFirstPos = lazyAncestor.Expression?.GetFirstPos(firstPosMap) ?? new HashSet<RegexExpression>();
-                var ancestorLastPos = lazyAncestor.Expression?.GetLastPos(lastPosMap) ?? new HashSet<RegexExpression>();
-
-                // This is a backward edge if: lastpos -> firstpos of same lazy quantifier
-                if (ancestorLastPos.Contains(fromPos) && targetPositions.Intersect(ancestorFirstPos).Any())
-                    return true;
-            }
-
-            return false;
-        }
 
         // Helper methods
         private bool IsPositionLazy(RegexExpression pos) => lazyPositions.TryGetValue(pos, out var lazy) && lazy;

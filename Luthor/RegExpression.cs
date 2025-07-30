@@ -464,26 +464,8 @@ namespace Luthor
             return false;
         }
         
-       
-        public static RegexRepeatExpression? TryGetAncestorRepeat(RegexExpression root, RegexExpression target)
-        {
-            // slow
-            RegexExpression? parent = target;
-            do
-            {
-                parent = parent.Parent;
-                if(parent is RegexRepeatExpression repeat)
-                {
-                    return repeat;
-                }
-            } while (parent != null);
-            return null;
-        }
-        public static RegexRepeatExpression? TryGetParentRepeat(RegexExpression root, RegexExpression target)
-        {
-            return target.Parent as RegexRepeatExpression;
-        }
-        public static RegexRepeatExpression? GetAncestorLazyRepeat(RegexExpression root, RegexExpression target)
+      
+        public static RegexRepeatExpression? GetAncestorLazyRepeat(RegexExpression target)
         {
             RegexExpression? parent = target;
             do
@@ -496,57 +478,7 @@ namespace Luthor
             } while (parent != null);
             return null;
         }
-        public static bool HasChildRepeat(RegexExpression expr)
-        {
-            if(expr is RegexBinaryExpression binary)
-            {
-                return (binary.Left != null && binary.Left is RegexRepeatExpression) || (binary.Right != null && binary.Right is RegexRepeatExpression);
-            }
-            if(expr is RegexUnaryExpression unary)
-            {
-                return unary.Expression!=null && unary.Expression is RegexRepeatExpression;
-            }
-            return false;
-        }
-        public static bool HasDescendantRepeats(RegexExpression expr)
-        {
-            var result = false;
-            expr.Visit((parent, expression, childIndex, level) =>
-            {
-                if(object.ReferenceEquals(expr,expression))
-                {
-                    return true;
-                }
-                if( expr is RegexRepeatExpression repeat)
-                {
-                    result = true;
-                    return false;
-                }
-                return true;
-            });
-            return result;
-        }
-        public static IList<RegexRepeatExpression> FillDescendantRepeats(RegexExpression expr,IList<RegexRepeatExpression> result = null)
-        {
-            if (result == null)
-            {
-                result = new List<RegexRepeatExpression>();
-            }
-
-            expr.Visit((parent, expression, childIndex, level) =>
-            {
-                if (object.ReferenceEquals(expr, expression))
-                {
-                    return true;
-                }
-                if (expr is RegexRepeatExpression repeat)
-                {
-                    result.Add(repeat);
-                }
-                return true;
-            });
-            return result;
-        }
+       
         /// <summary>
         /// Visits each element in the AST
         /// </summary>

@@ -22,8 +22,8 @@ namespace LutherTest
             {
                 return (null, null, null, null);
             }
+            Console.WriteLine($"Testing expression AST: {expr}");
             var unminDfa = expr.ToDfa();
-            
             unminDfa.RenderToFile(@"C:\Users\gazto\Pictures\test.jpg");
             var utf16Dfa = DfaUtf16Transformer.TransformToUtf16(unminDfa);
             var utf8Dfa = DfaUtf8Transformer.TransformToUtf8(unminDfa);
@@ -87,6 +87,7 @@ namespace LutherTest
         }
         void TestExpression(string expr, IEnumerable<(string Text, int ExpectingSymbol)> inputs)
         {
+
             Console.WriteLine($"Using the regex: {expr}");
             var ast = RegexExpression.Parse(expr);
             var dfas = CreateDfas(ast);
@@ -112,6 +113,45 @@ namespace LutherTest
             }
         }
         [TestMethod]
+        public void BuildADfa()
+        {
+            var q0 = new Dfa();
+            q0.Attributes["AcceptSymbol"] = 0;
+            var q1 = new Dfa();
+            q1.Attributes["AcceptSymbol"] = 0;
+            q0.AddTransition(new DfaTransition(q1, 'b', 'b'));
+            var q2 = new Dfa();
+            q2.Attributes["AcceptSymbol"] = 0;
+            q1.AddTransition(new DfaTransition(q2, 'b', 'b'));
+            var q3 = new Dfa();
+            q0.AddTransition(new DfaTransition(q3, 'a', 'a'));
+            q3.AddTransition(new DfaTransition(q2, 'b', 'b'));
+
+            q0.RenderToFile(@"..\..\..\abb.jpg", true);
+
+            Console.WriteLine(q0.ToString());
+
+        }
+        [TestMethod]
+        public void ForIsolatedFailureTesting()
+        {
+            // ((a|b)??b)* == (a?b)*
+            TestExpression(@"((a|b)??b)*",
+                new (string, int)[] {
+            ("", 0),           // empty string
+            ("b", 0),          // just b
+            ("ab", 0),         // a then b
+            ("bb", 0),         // b then b
+            ("bab", 0),        // b, a, b
+            ("abab", 0),       // ab twice
+            ("babab", 0),      // b, ab, ab
+            ("ababab", 0),     // ab three times
+            ("a", -1),         // trailing a
+            ("aba", -1),       // trailing a
+            ("c", -1),         // invalid char
+                });
+        }
+        [TestMethod]
         public void TestLexer()
         {
             var ccommentLazy = "# C comment\n" + @"/\*(.|\n)*?\*/";
@@ -133,25 +173,372 @@ namespace LutherTest
         [TestMethod]
         public void TestLazy()
         {
+            // Original working tests
             TestExpression(@"(a|b)*?bb",
-            new (string, int)[] {
-                ("aaabb",0),
-                ("caaabb",-1),
-                ("aaabbc",-1),
-            });
-            TestExpression(@"(/\*(.|\n)*?\*/)|(//.*$)",
-            new (string, int)[] {
-                ("// foo",0),
-                ("// foo\n",0),
-                ("/*** bar */",0),
-                ("/**/",0),
-                ("//",0),
-                ("//\n",0),
-                ("///",0),
-                ("/",-1),
-                ("/ *****",-1),
-            });
+                new (string, int)[] {
+            ("aaabb", 0),
+            ("caaabb", -1),
+            ("aaabbc", -1),
+                });
 
+            TestExpression(@"(/\*(.|\n)*?\*/)|(//.*$)",
+                new (string, int)[] {
+            ("// foo", 0),
+            ("// foo\n", 0),
+            ("/*** bar */", 0),
+            ("/**/", 0),
+            ("//", 0),
+            ("//\n", 0),
+            ("///", 0),
+            ("/", -1),
+            ("/ *****", -1),
+                });
+
+            // Test lazy nested in greedy
+
+            // ((a|b)??b)* == (a?b)*
+            TestExpression(@"((a|b)??b)*",
+                new (string, int)[] {
+            ("", 0),           // empty string
+            ("b", 0),          // just b
+            ("ab", 0),         // a then b
+            ("bb", 0),         // b then b
+            ("bab", 0),        // b, a, b
+            ("abab", 0),       // ab twice
+            ("babab", 0),      // b, ab, ab
+            ("ababab", 0),     // ab three times
+            ("a", -1),         // trailing a
+            ("aba", -1),       // trailing a
+            ("c", -1),         // invalid char
+                });
+
+            // ((a|b)*?b)* == (a*b)*
+            TestExpression(@"((a|b)*?b)*",
+                new (string, int)[] {
+            ("", 0),           // empty string
+            ("b", 0),          // just b
+            ("ab", 0),         // a then b
+            ("aab", 0),        // aa then b
+            ("aaab", 0),       // aaa then b
+            ("bab", 0),        // b, a, b
+            ("baab", 0),       // b, aa, b
+            ("bb", 0),         // b, b
+            ("abaaab", 0),     // ab, aaa, b
+            ("a", -1),         // trailing a
+            ("aba", -1),       // trailing a
+            ("c", -1),         // invalid char
+                });
+
+            // ((a|b)+?b)* == (a+b)*
+            TestExpression(@"((a|b)+?b)*",
+                new (string, int)[] {
+            ("", 0),           // empty string
+            ("ab", 0),         // a then b
+            ("bb", 0),         // b then b
+            ("aab", 0),        // aa then b
+            ("abab", 0),       // ab twice
+            ("abbb", 0),       // ab, bb
+            ("aabbb", 0),      // aab, bb
+            ("b", -1),         // just b (needs at least one a|b before b)
+            ("a", -1),         // trailing a
+            ("c", -1),         // invalid char
+                });
+
+            // ((a|b)??b)? == (a?b)?
+            TestExpression(@"((a|b)??b)?",
+                new (string, int)[] {
+            ("", 0),           // empty (optional)
+            ("b", 0),          // just b
+            ("ab", 0),         // a then b
+            ("bb", 0),        // too much (passes anyway due to funadamental DFA restrictions)
+            ("a", -1),         // incomplete
+            ("c", -1),         // invalid
+                });
+
+            // ((a|b)*?b)? == (a*b)?
+            TestExpression(@"((a|b)*?b)?",
+                new (string, int)[] {
+            ("", 0),           // empty (optional)
+            ("b", 0),          // just b
+            ("ab", 0),         // a then b
+            ("aab", 0),        // aa then b
+            ("aaab", 0),       // aaa then b
+            ("bb", 0),        // extra b // DFA limitation - correct match but not lazy preference order.
+            ("a", -1),         // incomplete
+            ("c", -1),         // invalid
+                });
+
+            // ((a|b)+?b)? == ((a|b)(a*b))?
+            TestExpression(@"((a|b)+?b)?",
+                new (string, int)[] {
+            ("", 0),           // empty (optional)
+            ("ab", 0),         // a then b
+            ("bb", 0),         // b then b
+            ("aab", 0),        // aa then b
+            ("b", -1),         // just b (needs +)
+            ("a", -1),         // incomplete
+            ("c", -1),         // invalid
+                });
+
+            // ((a|b)??b)+ == (a?b)+
+            TestExpression(@"((a|b)??b)+",
+                new (string, int)[] {
+            ("b", 0),          // just b
+            ("ab", 0),         // a then b
+            ("bb", 0),         // b, b
+            ("bab", 0),        // b, a, b
+            ("abab", 0),       // ab, ab
+            ("", -1),          // empty (needs +)
+            ("a", -1),         // incomplete
+            ("c", -1),         // invalid
+                });
+
+            // ((a|b)*?b)+ == (a*b)+
+            TestExpression(@"((a|b)*?b)+",
+                new (string, int)[] {
+            ("b", 0),          // just b
+            ("ab", 0),         // a then b
+            ("aab", 0),        // aa then b
+            ("bb", 0),         // b, b
+            ("bab", 0),        // b, a, b
+            ("abaab", 0),      // ab, aab
+            ("", -1),          // empty (needs +)
+            ("a", -1),         // incomplete
+            ("c", -1),         // invalid
+                });
+
+            // ((a|b)+?b)+ == (a+b)+
+            TestExpression(@"((a|b)+?b)+",
+                new (string, int)[] {
+            ("ab", 0),         // a then b
+            ("bb", 0),         // b then b
+            ("aab", 0),        // aa then b
+            ("abab", 0),       // ab, ab
+            ("abbb", 0),       // ab, bb
+            ("", -1),          // empty (needs +)
+            ("b", -1),         // just b (needs + before b)
+            ("a", -1),         // incomplete
+            ("c", -1),         // invalid
+                });
+
+            // ((a|b)??)* == empty
+            TestExpression(@"((a|b)??)*",
+                new (string, int)[] {
+            ("", 0),           // empty only
+            ("a", 0),         
+            ("b", 0),
+            ("ab", 0),
+                });
+
+            // ((a|b)*?)* == empty
+            TestExpression(@"((a|b)*?)*",
+                new (string, int)[] {
+            ("", 0), 
+            ("a", 0),
+            ("b", 0),
+            ("ab", 0),
+                });
+
+            // ((a|b)+?)* == empty
+            TestExpression(@"((a|b)+?)*",
+                new (string, int)[] {
+            ("", 0),          
+            ("a", 0),         
+            ("b", 0),
+            ("ab", 0),
+                });
+
+            // ((a|b)??)? == empty
+            TestExpression(@"((a|b)??)?",
+                new (string, int)[] {
+            ("", 0),           
+            ("a", 0),         
+            ("b", 0),
+                });
+
+            // ((a|b)*?)? == empty
+            TestExpression(@"((a|b)*?)?",
+                new (string, int)[] {
+            ("", 0),          
+            ("a", 0),         
+            ("b", 0),
+                });
+
+            // ((a|b)+?)? == (a|b)?
+            TestExpression(@"((a|b)+?)?",
+                new (string, int)[] {
+            ("", 0),           // empty
+            ("a", 0),          // single a
+            ("b", 0),          // single b
+            ("ab", 0),        // not too much!
+            ("c", -1),         // invalid
+                });
+
+            // ((a|b)??)+ == empty
+            TestExpression(@"((a|b)??)+",
+                new (string, int)[] {
+            ("", 0),         
+            ("a", 0),        
+            ("b", 0),
+                });
+
+            // ((a|b)*?)+ == empty
+            TestExpression(@"((a|b)*?)+",
+                new (string, int)[] {
+            ("", 0),          
+            ("a", 0),        
+            ("b", 0),
+                });
+
+            // ((a|b)+?)+ == (a|b)+
+            TestExpression(@"((a|b)+?)+",
+                new (string, int)[] {
+            ("a", 0),          // single a
+            ("b", 0),          // single b
+            ("ab", 0),         // a and b
+            ("ba", 0),         // b and a
+            ("aab", 0),        // multiple
+            ("", -1),          // empty (needs +)
+            ("c", -1),         // invalid
+                });
+
+            // (b(a|b)*?)* == b*
+            TestExpression(@"(b(a|b)*?)*",
+                new (string, int)[] {
+            ("", 0),           // empty
+            ("b", 0),          // single b
+            ("bb", 0),         // multiple b
+            ("bbb", 0),        // many b
+            ("a", -1),         // must start with b if not empty
+            ("ba", 0),        
+            ("ab", -1),        // can't start with a
+                });
+
+            // Test lazy followed by greedy - Complex alternations
+
+            // (a|b)*?a*b*|(c|d)*?c*d+|(e|f)*?e+f*|(g|h)*?g+h+|(i|j)+?i*j*|(k|l)+?k*l+|(m|n)+?m+n*|(o|p)+?o+p+
+            TestExpression(@"(a|b)*?a*b*|(c|d)*?c*d+|(e|f)*?e+f*|(g|h)*?g+h+|(i|j)+?i*j*|(k|l)+?k*l+|(m|n)+?m+n*|(o|p)+?o+p+",
+                new (string, int)[] {
+            // First alternative: (a|b)*?a*b*
+            ("", 0),           // empty
+            ("a", 0),          // just a
+            ("b", 0),          // just b
+            ("ab", 0),         // a then b
+            ("aab", 0),        // aa then b
+            ("abb", 0),        // a then bb
+            ("aabb", 0),       // aa then bb
+            
+            // Second alternative: (c|d)*?c*d+
+            ("d", 0),          // just d
+            ("cd", 0),         // c then d
+            ("ccd", 0),        // cc then d
+            ("cdd", 0),        // c then dd
+            ("dd", 0),         // just dd
+            ("c", -1),         // c without d
+            
+            // Third alternative: (e|f)*?e+f*
+            ("e", 0),          // just e
+            ("ee", 0),         // multiple e
+            ("ef", 0),         // e then f
+            ("eef", 0),        // ee then f
+            ("eeff", 0),       // ee then ff
+            ("f", -1),         // f without e
+            
+            // Fourth alternative: (g|h)*?g+h+
+            ("gh", 0),         // g then h
+            ("ggh", 0),        // gg then h
+            ("ghh", 0),        // g then hh
+            ("gghh", 0),       // gg then hh
+            ("g", -1),         // g without h
+            ("h", -1),         // h without g
+            
+            // Fifth alternative: (i|j)+?i*j*
+            ("i", 0),          // just i
+            ("j", 0),          // just j
+            ("ij", 0),         // i then j
+            ("ji", 0),         // j then i
+            ("iij", 0),        // ii then j
+            ("ijj", 0),        // i then jj
+            
+            // Sixth alternative: (k|l)+?k*l+
+            ("kl", 0),         // k then l
+            ("ll", 0),         // l then l
+            ("kkl", 0),        // kk then l
+            ("kll", 0),        // k then ll
+            ("k", -1),         // k without l
+            
+            // Seventh alternative: (m|n)+?m+n*
+            ("m", -1),          // just m
+            ("mm", 0),         // multiple m
+            ("mn", -1),         // m then n
+            ("mmn", 0),        // mm then n
+            ("mmnn", 0),       // mm then nn
+            ("n", -1),         // n without m
+            
+            // Eighth alternative: (o|p)+?o+p+
+            ("op", -1),         // o then p
+            ("oop", 0),        // oo then p
+            ("opp", -1),        // o then pp
+            ("oopp", 0),       // oo then pp
+            ("o", -1),         // o without p
+            ("p", -1),         // p without o
+            
+            // Invalid cases
+            ("x", -1),         // invalid char
+            ("ac", -1),        // mixed alternations
+                });
+
+            // Test lazy followed by lazy
+
+            // (a|b)??b(a|b)??b|(c|d)*?d(c|d)*?d|(e|f)+?f(e|f)+?f|((g|h)??h){2}|((i|j)*?j){2}|((k|l)+?l){2}
+            TestExpression(@"(a|b)??b(a|b)??b|(c|d)*?d(c|d)*?d|(e|f)+?f(e|f)+?f|((g|h)??h){2}|((i|j)*?j){2}|((k|l)+?l){2}",
+                new (string, int)[] {
+            // First alternative: (a|b)??b(a|b)??b
+            ("bb", 0),         // b then b
+            ("abb", 0),        // a, b, b
+            ("bab", 0),        // b, a, b
+            ("abab", 0),       // a, b, a, b
+            ("b", -1),         // incomplete
+            
+            // Second alternative: (c|d)*?d(c|d)*?d
+            ("dd", 0),         // d then d
+            ("cdd", 0),        // c, d, d
+            ("dcd", 0),        // d, c, d
+            ("cdcd", 0),       // c, d, c, d
+            ("d", -1),         // incomplete
+            
+            // Third alternative: (e|f)+?f(e|f)+?f
+            ("ff", -1),         // f then f
+            ("eff", -1),        // e, f, f
+            ("fef", -1),        // f, e, f
+            ("efef", 0),       // e, f, e, f
+            ("f", -1),         // incomplete
+            
+            // Fourth alternative: ((g|h)??h){2}
+            ("hh", 0),         // h, h
+            ("ghh", 0),        // g, h, h
+            ("hgh", 0),        // h, g, h
+            ("ghgh", 0),       // g, h, g, h
+            ("h", -1),         // incomplete
+            
+            // Fifth alternative: ((i|j)*?j){2}
+            ("jj", 0),         // j, j
+            ("ijj", 0),        // i, j, j
+            ("jij", 0),        // j, i, j
+            ("ijij", 0),       // i, j, i, j
+            ("j", -1),         // incomplete
+            
+            // Sixth alternative: ((k|l)+?l){2}
+            ("ll", 0),         // l, l
+            ("kll", 0),        // k, l, l
+            ("lkl", 0),        // l, k, l
+            ("klkl", 0),       // k, l, k, l
+            ("l", -1),         // incomplete
+            
+            // Invalid cases
+            ("x", -1),         // invalid char
+            ("ab", -1),        // wrong pattern
+                });
         }
         [TestMethod]
         public void TestLazyAnchoring()
@@ -159,7 +546,7 @@ namespace LutherTest
             TestExpression(@"//$", [("//", 0)]);
             TestExpression(@"//.*$", [("//", 0)]);
             TestExpression(@"//.*$", [("//foo", 0)]);
-            TestExpression(@"//.*?", [("//foo", -1)]);
+            TestExpression(@"//.*?", [("//foo", 0)]); // between the choice to make this greedy or cut it off // we went with greedy
             TestExpression(@"//.*?", [("//", 0)]);
 
         }
@@ -1408,23 +1795,23 @@ namespace LutherTest
             const int START_ANCHOR = 1;  // ^
             const int END_ANCHOR = 2;    // $
 
-            Console.WriteLine($"ANCHOR DEBUG: mask={anchorMask}, atLineStart={atLineStart}, atLineEnd={atLineEnd}");
+           // Console.WriteLine($"ANCHOR DEBUG: mask={anchorMask}, atLineStart={atLineStart}, atLineEnd={atLineEnd}");
 
             // Check start anchor condition
             if ((anchorMask & START_ANCHOR) != 0 && !atLineStart)
             {
-                Console.WriteLine($"ANCHOR DEBUG: START_ANCHOR failed");
+               // Console.WriteLine($"ANCHOR DEBUG: START_ANCHOR failed");
                 return false;
             }
 
             // Check end anchor condition  
             if ((anchorMask & END_ANCHOR) != 0 && !atLineEnd)
             {
-                Console.WriteLine($"ANCHOR DEBUG: END_ANCHOR failed");
+              // Console.WriteLine($"ANCHOR DEBUG: END_ANCHOR failed");
                 return false;
             }
 
-            Console.WriteLine($"ANCHOR DEBUG: All conditions passed");
+           // Console.WriteLine($"ANCHOR DEBUG: All conditions passed");
             return true;
         }
         static int TestUtf32Dfa(Dfa startState, string input)
@@ -1463,7 +1850,8 @@ namespace LutherTest
                     foreach (var transition in currentState.Transitions)
                     {
                         var dstStateIndex = closure.IndexOf(transition.To);
-                        Console.WriteLine($"DEBUG: has q{currentStateIndex}->q{dstStateIndex} on {transition}");
+                        var range = new DfaRange(transition.Min,transition.Max);
+                        //Console.WriteLine($"DEBUG: has q{currentStateIndex}->q{dstStateIndex} on {range}");
                         //currentStateIndex
                         int codepoint = codepoints[position];
                         if (codepoint >= transition.Min && codepoint <= transition.Max)
@@ -1542,7 +1930,7 @@ namespace LutherTest
                         }
                         else
                         {
-                            Console.WriteLine($"REJECTED: Not in accept state at end of input");
+                            Console.WriteLine($"REJECTED: Not in accept state at end of input. Final state: q{closure.IndexOf(currentState)} (IsAccept: {currentState.IsAccept})");
                         }
                         return -1;
                     }

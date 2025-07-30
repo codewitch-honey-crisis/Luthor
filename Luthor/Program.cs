@@ -37,6 +37,8 @@ static class Program
     static Encoding Enc = Encoding.UTF8;
     [CmdArg(Name = "graph", Optional = true, ElementName = "graph", Description = "Generate a DFA state graph to the specified file (requires GraphViz)")]
     static FileInfo Graph;
+    [CmdArg(Name = "draft", Optional = true, ElementName = "draft", Description = "Generate a DFA state graph draft to the specified file (requires GraphViz)")]
+    static FileInfo Draft;
 
     [CmdArg(Name="?", Group="Help",Optional = true,Description = "Displays this help screen")]
     static bool Help = false;
@@ -86,6 +88,15 @@ static class Program
         }
         return 4;
     }
+    static string SafePrint(string s)
+    {
+        if (s == null) return "<null>";
+        if(s.Length > 40)
+        {
+            return s.Substring(0, 10) + "...<omitted>";
+        }
+        return s;
+    }
     static void Main(string[] args)
     {
         using (var allArgs = CliUtility.ParseAndSet(args, null, typeof(Program), 0, null, "--"))
@@ -104,6 +115,21 @@ static class Program
             Console.Error.WriteLine();
             var expr = RegexExpression.Parse(Input!);
             var dfa = expr!.ToDfa();
+            if (expr is RegexLexerExpression lexer)
+            {
+                Console.WriteLine("Individual rule expanded greedy expressions:");
+                foreach (var rule in lexer.Rules)
+                {
+                    Console.WriteLine(SafePrint(rule.ToDfa().ToString()));
+                }
+                Console.WriteLine();
+                Console.WriteLine($"Amalgamated lexer greedy expression: {SafePrint(dfa.ToString())}");
+            }
+            else
+            {
+                Console.WriteLine("Expanded greedy expression");
+                Console.WriteLine(SafePrint(dfa.ToString()));
+            }
             Console.Error.WriteLine($"Created initial machine with {dfa.FillClosure().Count} states.");
             if (Graph != null)
             {
@@ -112,6 +138,14 @@ static class Program
                     try { Graph.Delete(); } catch { }
                 }
                 dfa.RenderToFile(Graph.FullName);
+            }
+            if (Draft != null)
+            {
+                if (Draft.Exists)
+                {
+                    try { Draft.Delete(); } catch { }
+                }
+                dfa.RenderToFile(Draft.FullName,true);
             }
             var len = dfa.GetArrayLength();
             //Console.Error.Write("Minimizing...");

@@ -5,8 +5,26 @@ using System.Text;
 
 namespace Luthor
 {
-    class DfaAttributes : Dictionary<string, object>, IEquatable<DfaAttributes>
+    class DfaAttributes : Dictionary<string, object>, IEquatable<DfaAttributes>,ICloneable
     {
+        object ICloneable.Clone()
+        {
+            return Clone();
+        }
+        public DfaAttributes Clone()
+        {
+            var result = new DfaAttributes();
+            foreach(var kvp in this)
+            {
+                var val = kvp.Value;
+                if(val is ICloneable cloneable)
+                {
+                    val = (ICloneable)cloneable.Clone();
+                }
+                result.Add(kvp.Key, val);
+            }
+            return result;
+        }
         public bool Equals(DfaAttributes? other)
         {
             if (object.ReferenceEquals(this, other)) return true;
@@ -75,10 +93,30 @@ namespace Luthor
             foreach (var attr in this)
             {
                 result ^= attr.Key.GetHashCode();
-                if (attr.Value != null)
+
+                var en = false;
+                if (attr.Value is System.Collections.ICollection e)
                 {
-                    result ^= attr.Value.GetHashCode();
+                    en = true;
                 }
+                if (!en)
+                {
+                    if (attr.Value != null)
+                    {
+                        result ^= attr.Value.GetHashCode();
+                    }
+                }
+                else
+                {
+                    var col1 = attr.Value as System.Collections.ICollection;
+                    if (col1 != null)
+                    {
+                        foreach (var v1 in col1)
+                        {
+                            result ^= v1.GetHashCode();
+                        }
+                    }
+                }                
             }
             return result;
 
@@ -201,6 +239,11 @@ namespace Luthor
 
             }
         }
+        private static string SafeConvertCodepoint(int cp)
+        {
+            if (cp < 1 || cp>0x10ffff) return " ";
+            return char.ConvertFromUtf32(cp);
+        }
         /// <summary>
         /// Returns a string representation of the range
         /// </summary>
@@ -209,9 +252,9 @@ namespace Luthor
         {
             if (Min == Max)
             {
-                return string.Concat("[", char.ConvertFromUtf32(Min), "]");
+                return string.Concat("[", SafeConvertCodepoint(Min), "]");
             }
-            return string.Concat("[", char.ConvertFromUtf32(Min), "-", char.ConvertFromUtf32(Max), "]");
+            return string.Concat("[", SafeConvertCodepoint(Min), "-", SafeConvertCodepoint(Max), "]");
         }
         /// <summary>
         /// Value equality
@@ -252,6 +295,7 @@ namespace Luthor
 
     struct DfaTransition : IEquatable<DfaTransition>
     {
+        public DfaAttributes Attributes { get; set; } = null; 
         /// <summary>
         /// The minimum codepoint of the range
         /// </summary>
@@ -291,11 +335,8 @@ namespace Luthor
             {
                 return string.Concat("-> ", To.ToString());
             }
-            if (Min == Max)
-            {
-                return string.Concat("[", char.ConvertFromUtf32(Min), "]-> ", To.ToString());
-            }
-            return string.Concat("[", char.ConvertFromUtf32(Min), "-", char.ConvertFromUtf32(Max), "]-> ", To.ToString());
+            var rng = new DfaRange(Min, Max).ToString();
+            return string.Concat(rng, " -> ", To.ToString());
         }
         /// <summary>
         /// Value equality
@@ -304,7 +345,18 @@ namespace Luthor
         /// <returns></returns>
         public bool Equals(DfaTransition rhs)
         {
-            return To == rhs.To && Min == rhs.Min && Max == rhs.Max;
+            if(To == rhs.To && Min == rhs.Min && Max == rhs.Max)
+            {
+                if(Attributes==null || Attributes.Count==0) { 
+                    return rhs.Attributes==null || rhs.Attributes.Count==0;
+                }
+                if(rhs.Attributes==null || rhs.Attributes.Count!=Attributes.Count)
+                {
+                    return false;
+                }
+                return Attributes.Equals(rhs.Attributes);
+            }
+            return false;
         }
         /// <summary>
         /// Returns a hashcode for the transition
@@ -314,9 +366,21 @@ namespace Luthor
         {
             if (To == null)
             {
-                return Min.GetHashCode() ^ Max.GetHashCode();
+                if (Attributes == null)
+                {
+                    return Min.GetHashCode() ^ Max.GetHashCode();
+                } else
+                {
+                    return Min.GetHashCode() ^ Max.GetHashCode() ^ Attributes.GetHashCode();
+                }
             }
-            return Min.GetHashCode() ^ Max.GetHashCode() ^ To.GetHashCode();
+            if (Attributes == null)
+            {
+                return Min.GetHashCode() ^ Max.GetHashCode() ^ To.GetHashCode();
+            } else
+            {
+                return Min.GetHashCode() ^ Max.GetHashCode() ^ To.GetHashCode() ^ Attributes.GetHashCode();
+            }
         }
         /// <summary>
         /// Value equality
@@ -400,8 +464,294 @@ namespace Luthor
         }
     }
 
-    internal partial class Dfa
+    internal partial class Dfa : ICloneable
     {
+        private struct _ExpEdge
+        {
+            public string Exp;
+            public Dfa From;
+            public Dfa To;
+            public override string ToString()
+            {
+                return string.Concat(From, " \"", Exp, "\" ", To);
+            }
+        }
+        object ICloneable.Clone() { return Clone(); }
+        public Dfa Clone()
+        {
+            var closure = FillClosure();
+            var nclosure = new Dfa[closure.Count];
+            for (var i = 0; i < nclosure.Length; i++)
+            {
+                var fa = closure[i];
+                var nfa = new Dfa();
+                if(fa.Attributes!=null)
+                {
+                    nfa.Attributes = fa.Attributes.Clone();
+                } else
+                {
+                    nfa.Attributes = null;
+                }
+                nfa._MinimizationTag = fa._MinimizationTag;
+                nclosure[i] = nfa;
+            }
+            for (var i = 0; i < nclosure.Length; i++)
+            {
+                var fa = closure[i];
+                var nfa = nclosure[i];
+                for (int jc = fa._transitions.Count, j = 0; j < jc; ++j)
+                {
+                    var fat = fa._transitions[j];
+                    nfa._transitions.Add(new DfaTransition(nclosure[closure.IndexOf(fat.To)], fat.Min, fat.Max));
+                }
+            }
+            return nclosure[0];
+        }
+        static void _ToExpressionFillEdgesIn(IList<_ExpEdge> edges, Dfa node, IList<_ExpEdge> result)
+        {
+            for (int i = 0; i < edges.Count; ++i)
+            {
+                if (edges[i].To == node)
+                {
+                    result.Add(edges[i]);
+                }
+            }
+        }
+        static void _ToExpressionFillEdgesOut(IList<_ExpEdge> edges, Dfa node, IList<_ExpEdge> result)
+        {
+            for (int i = 0; i < edges.Count; ++i)
+            {
+                var edge = edges[i];
+                if (edge.From == node)
+                {
+                    result.Add(edge);
+                }
+            }
+        }
+        static string _ToExpressionOrJoin(IList<string> strings)
+        {
+            if (strings.Count == 0) return string.Empty;
+            if (strings.Count == 1) return strings[0];
+            return string.Concat("(", string.Join("|", strings), ")");
+        }
+
+        static void _ToExpressionKleeneStar(StringBuilder sb, string s, bool noWrap)
+        {
+            if (string.IsNullOrEmpty(s)) return;
+            if (noWrap || s.Length == 1)
+            {
+                sb.Append(s);
+                sb.Append("*");
+                return;
+            }
+            sb.Append("(");
+            sb.Append(s);
+            sb.Append(")*");
+        }
+        public override string ToString()
+        {
+            return _ToExpression(this);
+        }
+
+        static void _ToExpressionFillEdgesOrphanState(IList<_ExpEdge> edges, Dfa node, IList<_ExpEdge> result)
+        {
+            for (int i = 0; i < edges.Count; ++i)
+            {
+                var edge = edges[i];
+                if (edge.From == node || edge.To == node)
+                {
+                    continue;
+                }
+                result.Add(edge);
+            }
+        }
+        static string _ToExpression(Dfa fa)
+        {
+
+            List<Dfa> closure = new List<Dfa>();
+            List<_ExpEdge> fsmEdges = new List<_ExpEdge>();
+            Dfa first, final = null;
+
+            first = fa;
+            fa.FillClosure(closure);
+            var acc = new List<Dfa>();  
+            foreach(var afa in closure)
+            {
+                if(afa.IsAccept)
+                {
+                    acc.Add(afa);
+                }
+            }
+            if (acc.Count == 1)
+            {
+                final = acc[0];
+            }
+            else if (acc.Count == 0) return null; // no match?
+            else if (acc.Count > 1)
+            {
+                fa = fa.Clone();
+                first = fa;
+                closure.Clear();
+                fa.FillClosure(closure);
+                acc.Clear();
+                foreach (var afa in closure)
+                {
+                    if (afa.IsAccept)
+                    {
+                        acc.Add(afa);
+                    }
+                }
+                final = new Dfa();
+                final.Attributes["AcceptSymbol"] = acc[0].AcceptSymbol;
+                for (int i = 0; i < acc.Count; ++i)
+                {
+                    var a = acc[i];
+                    // DANGER: DO NOT USE EPSILONS WITH DFABUILDER
+                    a.AddTransition(new DfaTransition(final, -1, -1));
+                    a.Attributes.Remove("AcceptSymbol");
+                }
+            }
+            closure.Clear();
+            first.FillClosure(closure);
+            var sb = new StringBuilder();
+            // build the machine from the Dfa
+            var trnsgrp = new Dictionary<Dfa, IList<DfaRange>>(closure.Count);
+            for (int q = 0; q < closure.Count; ++q)
+            {
+                var cfa = closure[q];
+                trnsgrp.Clear();
+                foreach (var trns in cfa.FillInputTransitionRangesGroupedByState(trnsgrp))
+                {
+                    sb.Clear();
+                    if (trns.Value.Count == 1 && trns.Value[0].Min == trns.Value[0].Max)
+                    {
+                        var range = trns.Value[0];
+                        if (range.Min == -1 || range.Max == -1)
+                        {
+                            var eedge = new _ExpEdge();
+                            eedge.Exp = string.Empty;
+                            eedge.From = cfa;
+                            eedge.To = trns.Key;
+                            fsmEdges.Add(eedge);
+                            continue;
+                        }
+                        _AppendCharTo(sb, range.Min);
+                    }
+                    else
+                    {
+                        sb.Append("[");
+                        _AppendRangeTo(sb, trns.Value);
+                        sb.Append("]");
+                    }
+                    var edge = new _ExpEdge();
+                    edge.Exp = sb.ToString();
+                    edge.From = cfa;
+                    edge.To = trns.Key;
+                    fsmEdges.Add(edge);
+                }
+            }
+            var tmp = new Dfa();
+
+            tmp.AddTransition(new DfaTransition(first, -1,-1));
+            var q0 = first;
+            first = tmp;
+            tmp = new Dfa();
+            if (final.AcceptSymbol != -1)
+            {
+                tmp.Attributes["AcceptSymbol"] = final.AcceptSymbol;
+            }
+            var qLast = final;
+            final.Attributes.Remove("AcceptSymbol");
+            final.AddTransition(new DfaTransition(tmp, -1, -1));
+            final = tmp;
+            // add first and final
+            var newEdge = new _ExpEdge();
+            newEdge.Exp = string.Empty;
+            newEdge.From = first;
+            newEdge.To = q0;
+            fsmEdges.Add(newEdge);
+            newEdge = new _ExpEdge();
+            newEdge.Exp = string.Empty;
+            newEdge.From = qLast;
+            newEdge.To = final;
+            fsmEdges.Add(newEdge);
+            closure.Insert(0, first);
+            closure.Add(final);
+            var inEdges = new List<_ExpEdge>(fsmEdges.Count);
+            var outEdges = new List<_ExpEdge>(fsmEdges.Count);
+            while (closure.Count > 2)
+            {
+
+                var node = closure[1];
+                var loops = new List<string>(inEdges.Count);
+                inEdges.Clear();
+                _ToExpressionFillEdgesIn(fsmEdges, node, inEdges);
+                for (int i = 0; i < inEdges.Count; ++i)
+                {
+                    var edge = inEdges[i];
+                    if (edge.From == edge.To)
+                    {
+                        loops.Add(edge.Exp);
+                    }
+                }
+                sb.Clear();
+                _ToExpressionKleeneStar(sb, _ToExpressionOrJoin(loops), loops.Count > 1);
+                var middle = sb.ToString();
+                for (int i = 0; i < inEdges.Count; ++i)
+                {
+                    var inEdge = inEdges[i];
+                    if (inEdge.From == inEdge.To)
+                    {
+                        continue;
+                    }
+                    outEdges.Clear();
+                    _ToExpressionFillEdgesOut(fsmEdges, node, outEdges);
+                    for (int j = 0; j < outEdges.Count; ++j)
+                    {
+                        var outEdge = outEdges[j];
+                        if (outEdge.From == outEdge.To)
+                        {
+                            continue;
+                        }
+                        var expEdge = new _ExpEdge();
+                        expEdge.From = inEdge.From;
+                        expEdge.To = outEdge.To;
+                        sb.Clear();
+                        sb.Append(inEdge.Exp);
+                        sb.Append(middle);
+                        sb.Append(outEdge.Exp);
+                        expEdge.Exp = sb.ToString();
+                        fsmEdges.Add(expEdge);
+                    }
+                }
+                // reuse inedges since we're not using it
+                inEdges.Clear();
+                _ToExpressionFillEdgesOrphanState(fsmEdges, node, inEdges);
+                fsmEdges.Clear();
+                fsmEdges.AddRange(inEdges);
+                closure.Remove(node);
+
+            }
+            sb.Clear();
+            if (fsmEdges.Count == 1)
+            {
+                return fsmEdges[0].Exp;
+            }
+            if (fsmEdges.Count > 1)
+            {
+                sb.Append("(");
+                sb.Append(fsmEdges[0].Exp);
+                for (int i = 1; i < fsmEdges.Count; ++i)
+                {
+                    sb.Append("|");
+                    var edge = fsmEdges[i];
+                    sb.Append(edge.Exp);
+                }
+                sb.Append(")");
+            }
+            return sb.ToString();
+
+        }
         internal int _MinimizationTag { get; set; } = -1;
         public IList<Dfa> FillClosure(IList<Dfa> result = null)
         {
@@ -417,7 +767,7 @@ namespace Luthor
             }
             return result;
         }
-        public readonly DfaAttributes Attributes = new DfaAttributes();
+        public DfaAttributes Attributes { get; set; } = new DfaAttributes();
         readonly List<DfaTransition> _transitions = new List<DfaTransition>(); // TODO: wrap this with IReadOnlyList for a public property, and add AddTransition
         public IReadOnlyList<DfaTransition> Transitions { get { return _transitions; } }
         public bool IsAccept
@@ -500,10 +850,7 @@ namespace Luthor
 
             foreach (var trns in Transitions)
             {
-                if (trns.IsEpsilon)
-                {
-                    continue;
-                }
+               
                 IList<DfaRange> l;
                 if (!result.TryGetValue(trns.To, out l))
                 {

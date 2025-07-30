@@ -4,7 +4,7 @@ A fast, compact lexer generator that produces simple integer arrays for efficien
 
 **Key Features:**
 - Direct-to-DFA conversion (no intermediate NFA)
-- Lazy quantifier support (`??`, `*?`, `+?`)
+- Partial lazy quantifier support (`??`, `*?`, `+?`) - all expressions are accepted but due to limitations of DFA traversal some complicated lazy matches may end up partly or entirely greedy.
 - Unicode support (UTF-8, UTF-16, UTF-32)
 - Compact array output suitable for embedded systems
 - Language-agnostic - use the arrays in C, C++, Rust, etc.

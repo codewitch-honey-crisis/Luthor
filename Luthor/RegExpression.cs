@@ -344,6 +344,7 @@ namespace Luthor
         public void SetLocation(long position)
         {
             Location = position;
+            InvalidateHashCode();
         }
         public List<RegexComment> Comments { get; } = new List<RegexComment>();
 
@@ -1810,6 +1811,7 @@ namespace Luthor
                 {
                     _left.SetParent(this);
                 }
+                InvalidateHashCode();
             }
         }
         RegexExpression? _right = null;
@@ -1855,6 +1857,7 @@ namespace Luthor
                 {
                     _expression.SetParent(this);
                 }
+                InvalidateHashCode();
             }
         }
 
@@ -1891,7 +1894,11 @@ namespace Luthor
         /// Indicates the rules in this expression
         /// </summary>
         public IReadOnlyList<RegexExpression> Rules { get=>_rules; } 
-
+        public void ClearRules()
+        {
+            _rules.Clear();
+            InvalidateHashCode();
+        }
         public void AddRule(RegexExpression rule)
         {
             if(rule==null)
@@ -1900,6 +1907,7 @@ namespace Luthor
             }
             rule.SetParent(this);
             _rules.Add(rule);
+            InvalidateHashCode();
         }
         public void AddRules(IEnumerable<RegexExpression> rules)
         {
@@ -2196,10 +2204,17 @@ namespace Luthor
         public override bool IsEmptyElement => false;
         public override bool IsConsuming => false;
         public override bool IsLeaf => true;
+        private RegexAnchorType _type = RegexAnchorType.LineStart;
         /// <summary>
         /// Indicates the anchor type of this expression
         /// </summary>
-        public RegexAnchorType Type { get; set; } = RegexAnchorType.LineStart;
+        public RegexAnchorType Type { get=>_type;
+            set { 
+                if (_type == value) return;
+                _type = value;
+                InvalidateHashCode();
+            }
+        } 
 
         /// <summary>
         /// Creates a literal expression with the specified codepoint
@@ -2694,10 +2709,17 @@ namespace Luthor
         /// </summary>
         public override bool IsEmptyElement => Entries.Count == 0;
         public override bool IsConsuming => !IsEmptyElement;
+        readonly List<RegexCharsetEntry> _entries = new();
         /// <summary>
         /// Indicates the <see cref="RegexCharsetEntry"/> entries in the character set
         /// </summary>
-        public IList<RegexCharsetEntry> Entries { get; } = new List<RegexCharsetEntry>();
+        private IReadOnlyList<RegexCharsetEntry> Entries { get=>_entries; } 
+        public void AddEntry(RegexCharsetEntry entry)
+        {
+            if(entry==null) throw new ArgumentNullException(nameof(entry));
+            _entries.Add(entry);
+            InvalidateHashCode();
+        }
         /// <summary>
         /// Creates a new charset expression with the specified entries and optionally negated
         /// </summary>
@@ -2706,7 +2728,7 @@ namespace Luthor
         public RegexCharsetExpression(IEnumerable<RegexCharsetEntry> entries, bool hasNegatedRanges = false)
         {
             foreach (var entry in entries)
-                Entries.Add(entry);
+                AddEntry(entry);
             HasNegatedRanges = hasNegatedRanges;
         }
         /// <summary>
@@ -2745,11 +2767,20 @@ namespace Luthor
             }
             return result;
         }
+        private bool _hasNegatedRanges = false;
         /// <summary>
         /// Indicates whether the range is a "not range"
         /// </summary>
         /// <remarks>This is represented by the [^] regular expression syntax</remarks>
-        public bool HasNegatedRanges { get; set; } = false;
+        public bool HasNegatedRanges { get=>_hasNegatedRanges;
+            set { 
+                if(value!=_hasNegatedRanges)
+                {
+                    _hasNegatedRanges = value;
+                    InvalidateHashCode();
+                }
+            }
+        } 
         /// <summary>
         /// Indicates whether or not this statement is a single element or not
         /// </summary>
@@ -2841,7 +2872,7 @@ namespace Luthor
         /// </summary>
         /// <param name="rhs">The expression to compare</param>
         /// <returns>True if the expressions are the same, otherwise false</returns>
-        public bool Equals(RegexCharsetExpression rhs)
+        public bool Equals(RegexCharsetExpression? rhs)
         {
             if (ReferenceEquals(rhs, this)) return true;
             if (ReferenceEquals(rhs, null)) return false;
@@ -2864,7 +2895,7 @@ namespace Luthor
         /// </summary>
         /// <param name="rhs">The expression to compare</param>
         /// <returns>True if the expressions are the same, otherwise false</returns>
-        public override bool Equals(object rhs)
+        public override bool Equals(object? rhs)
             => Equals(rhs as RegexCharsetExpression);
         /// <summary>
         /// Computes a hash code for this expression
@@ -3338,19 +3369,51 @@ namespace Luthor
         /// Creates a default instance of the expression
         /// </summary>
         public RegexRepeatExpression() { }
+        private int _minOccurs = 0,_maxOccurs = 0;
         /// <summary>
         /// Indicates the minimum number of times the target expression can occur, or 0 or -1 for no minimum
         /// </summary>
-        public int MinOccurs { get; set; } = -1;
+        public int MinOccurs { 
+            get=>_minOccurs; 
+            set
+            {
+                if (_minOccurs != value)
+                {
+                    _minOccurs = value;
+                    InvalidateHashCode();
+                }
+            } 
+        }
         /// <summary>
         /// Indicates the maximum number of times the target expression can occur, or 0 or -1 for no maximum
         /// </summary>
-        public int MaxOccurs { get; set; } = -1; // kleene by default
-
+        public int MaxOccurs
+        {
+            get => _maxOccurs;
+            set
+            {
+                if (_maxOccurs != value)
+                {
+                    _maxOccurs = value;
+                    InvalidateHashCode();
+                }
+            }
+        }
+        private bool _isLazy = false;
         /// <summary>
         /// Indicates whether or not this is a lazy match
         /// </summary>
-        public bool IsLazy { get; set; } = false;
+        public bool IsLazy { 
+            get=>_isLazy;
+            set
+            {
+                if (_isLazy != value)
+                {
+                    _isLazy = value;
+                    InvalidateHashCode();
+                }
+            }
+        }
         /// <summary>
         /// Appends the textual representation to a <see cref="StringBuilder"/>
         /// </summary>

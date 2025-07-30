@@ -119,10 +119,9 @@ static class Program
                 Input = File.ReadAllText(Input);
             }
             Console.Error.WriteLine("Processing the following input:");
-            //Console.Error.WriteLine(Input);
-            Console.Error.WriteLine();
+            Console.Error.WriteLine(Input);
             var expr = RegexExpression.Parse(Input!);
-            Console.Error.WriteLine(expr);
+            Console.WriteLine();
             var dfa = expr!.ToDfa();
             if (expr is RegexLexerExpression lexer)
             {

@@ -194,19 +194,9 @@ namespace LutherTest
         public void ForIsolatedFailureTesting()
         {
             // ((a|b)??b)* == (a?b)*
-            TestExpression(@"((a|b)??b)*",
+            TestExpression(@"(/\*(.|\n)*?\*/)|(//.*$)",
                 new (string, int)[] {
-            ("", 0),           // empty string
-            ("b", 0),          // just b
-            ("ab", 0),         // a then b
-            ("bb", 0),         // b then b
-            ("bab", 0),        // b, a, b
-            ("abab", 0),       // ab twice
-            ("babab", 0),      // b, ab, ab
-            ("ababab", 0),     // ab three times
-            ("a", -1),         // trailing a
-            ("aba", -1),       // trailing a
-            ("c", -1),         // invalid char
+            ("///foo", 0),
                 });
         }
         [TestMethod]

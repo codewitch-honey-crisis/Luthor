@@ -123,13 +123,15 @@ static class Program
                 {
                     Console.WriteLine(SafePrint(rule.ToDfa().ToString()));
                 }
-                Console.WriteLine();
+                Console.Error.WriteLine();
                 Console.WriteLine($"Amalgamated lexer greedy expression: {SafePrint(dfa.ToString())}");
+                Console.Error.WriteLine();
             }
             else
             {
                 Console.WriteLine("Expanded greedy expression");
                 Console.WriteLine(SafePrint(dfa.ToString()));
+                Console.Error.WriteLine();
             }
             Console.Error.WriteLine($"Created initial machine with {dfa.FillClosure().Count} states.");
             if (Graph != null)
@@ -148,16 +150,15 @@ static class Program
                 }
                 dfa.RenderToFile(Draft.FullName,true);
             }
-            dfa.RenderToFile(@"..\..\..\dfa.jpg");
             var len = dfa.GetArrayLength();
+            Console.Error.WriteLine();
             Console.Error.Write("Minimizing...");
             dfa = dfa.ToMinimized();
             var mlen = dfa.GetArrayLength();
             Console.Error.WriteLine($"done! {100 - (mlen * 100 / len)}% size savings.");
             Console.Error.WriteLine($"Minimized machine has {dfa.FillClosure().Count} states.");
-            dfa.RenderToFile(@"..\..\..\mdfa.jpg");
             var xformed = false;
-
+            Console.Error.WriteLine();
             //dfa.RenderToFile(@"..\..\..\dfa.jpg");
             if (Enc != Encoding.UTF32)
             {

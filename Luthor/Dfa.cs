@@ -587,30 +587,29 @@ namespace Luthor
                 final = acc[0];
             }
             else if (acc.Count == 0) return null; // no match?
-            else if (acc.Count > 1)
+            
+            fa = fa.Clone();
+            first = fa;
+            closure.Clear();
+            fa.FillClosure(closure);
+            acc.Clear();
+            foreach (var afa in closure)
             {
-                fa = fa.Clone();
-                first = fa;
-                closure.Clear();
-                fa.FillClosure(closure);
-                acc.Clear();
-                foreach (var afa in closure)
+                if (afa.IsAccept)
                 {
-                    if (afa.IsAccept)
-                    {
-                        acc.Add(afa);
-                    }
-                }
-                final = new Dfa();
-                final.Attributes["AcceptSymbol"] = acc[0].AcceptSymbol;
-                for (int i = 0; i < acc.Count; ++i)
-                {
-                    var a = acc[i];
-                    // DANGER: DO NOT USE EPSILONS WITH DFABUILDER
-                    a.AddTransition(new DfaTransition(final, -1, -1));
-                    a.Attributes.Remove("AcceptSymbol");
+                    acc.Add(afa);
                 }
             }
+            final = new Dfa();
+            final.Attributes["AcceptSymbol"] = acc[0].AcceptSymbol;
+            for (int i = 0; i < acc.Count; ++i)
+            {
+                var a = acc[i];
+                // DANGER: DO NOT USE EPSILONS WITH DFABUILDER
+                a.AddTransition(new DfaTransition(final, -1, -1));
+                a.Attributes.Remove("AcceptSymbol");
+            }
+            
             closure.Clear();
             first.FillClosure(closure);
             var sb = new StringBuilder();
@@ -1519,6 +1518,38 @@ namespace Luthor
         {
             return fa.Length % 2 == 0;
         }
+        public static bool HasAnchorsInArray(int[] fa)
+        {
+            if (null == fa) throw new ArgumentNullException(nameof(fa));
+            if (fa.Length == 0)
+            {
+                return false;
+            }
+            var isRangeArray = (0 == fa.Length % 2);
+            var si = 0;
+            while (si < fa.Length)
+            {
+                si++; // accept
+                if (si >= fa.Length)
+                {
+                    break;
+                }
+                if (fa[si++] != 0) { return true; } // out of range!: si = fa.Length + 1 = 183
+                var tlen = fa[si++]; 
+                for (var i = 0; i < tlen; ++i)
+                {
+                    ++si; // tto
+                    // skip to the next transition group
+                    var prlen = fa[si++];
+                    if (isRangeArray)
+                        // ranges take two entries
+                        si += prlen * 2;
+                    else
+                        si += prlen;
+                }
+            }
+            return false;
+        }
         public int[] ToArray()
         {
             if(GetRangeArrayLength()<GetNonRangeArrayLength())
@@ -1546,11 +1577,12 @@ namespace Luthor
                 var newfa = new Dfa();
                 indexToStateMap.Add(si, newfa);
                 newfa.Attributes["AcceptSymbol"] = fa[si++];
-                // skip to the next state
                 if (si >= fa.Length)
                 {
                     break;
                 }
+                newfa.Attributes["AnchorMask"] = fa[si++];
+                // skip to the next state
 
                 var tlen = fa[si++];
                 for (var i = 0; i < tlen; ++i)
@@ -1572,6 +1604,9 @@ namespace Luthor
                 var newfa = indexToStateMap[si];
                 // already set above:
                 // newfa.AcceptSymbol = fa[si++];
+                ++si;
+                // already set above:
+                // newfa.AnchorMask = fa[si++];
                 ++si;
                 if (si >= fa.Length)
                 {

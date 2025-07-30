@@ -99,10 +99,10 @@ namespace Luthor
         {
             var s = new Dfa();
             s._transitions.Add(new DfaTransition(s, 0, 0x10ffff));
-            foreach (Dfa p in closure)
+            foreach (Dfa q in closure)
             {
                 int maxi = 0;
-                var sortedTrans = new List<DfaTransition>(p._transitions);
+                var sortedTrans = new List<DfaTransition>(q._transitions);
                 sortedTrans.Sort(_TransitionComparison);
                 foreach (var t in sortedTrans)
                 {
@@ -112,7 +112,7 @@ namespace Luthor
                     }
                     if (t.Min > maxi)
                     {
-                        p._transitions.Add(new DfaTransition(s, maxi, (t.Min - 1)));
+                        q._transitions.Add(new DfaTransition(s, maxi, (t.Min - 1)));
                     }
 
                     if (t.Max + 1 > maxi)
@@ -123,7 +123,7 @@ namespace Luthor
 
                 if (maxi <= 0x10ffff)
                 {
-                    p._transitions.Add(new DfaTransition(s, maxi, 0x10ffff));
+                    q._transitions.Add(new DfaTransition(s, maxi, 0x10ffff));
                 }
             }
         }
@@ -143,7 +143,10 @@ namespace Luthor
                 list.Add(default(T));
             }
         }
-        
+        static void DebugFsm(Dfa a, string name)
+        {
+            a.RenderToFile($"..\\..\\..\\{name}.jpg", true);
+        }
         static bool _AreStatesEquivalentForMinimization(Dfa state1, Dfa state2)
         {
             // Must have same accept symbol
@@ -190,6 +193,7 @@ namespace Luthor
             a.Totalize();
             ++prog;
             progress?.Report(prog);
+            
             // Make arrays for numbered states and effective alphabet.
             var cl = a.FillClosure();
 
@@ -320,6 +324,11 @@ namespace Luthor
                 {
                     var y = sigma[x];
                     var p = qq._Step(y);
+                    if(p==null)
+                    {
+                        Console.Error.WriteLine("Error in Hoffman minimization. Dumped to hoffman_fail.jpg");
+                        DebugFsm(a, "hoffman_fail");
+                    }
                     System.Diagnostics.Debug.Assert(p != null);
                     var pn = p._MinimizationTag;
                     reverse[pn]?[x]?.Enqueue(qq);

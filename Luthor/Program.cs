@@ -213,6 +213,10 @@ static class Program
             {
                 Console.Error.WriteLine($"Emitting non-ranged jump table array with a length of {arr.Length} and an element width of {width} {label}");
             }
+            if(!Dfa.HasAnchorsInArray(arr))
+            {
+                Console.Error.WriteLine("Note: This jump table does not have anchors, so the matching code may be simplified");
+            }
             Console.Error.WriteLine();
             Console.Error.WriteLine("* values do not reflect the relative width of the elements, only the total length of the array.");
             Console.Error.WriteLine();

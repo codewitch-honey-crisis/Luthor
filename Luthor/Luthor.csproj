@@ -10,8 +10,8 @@
     <Description>A DFA lexer generator tool</Description>
     <Copyright>Copyright (C) 2025 by honey the codewitch</Copyright>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <AssemblyVersion>0.1.6.0</AssemblyVersion>
-    <FileVersion>0.1.6.0</FileVersion>
+    <AssemblyVersion>0.1.7.0</AssemblyVersion>
+    <FileVersion>0.1.7.0</FileVersion>
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
     <PublishTrimmed>False</PublishTrimmed>
     <PublishAot>False</PublishAot>
@@ -25,7 +25,7 @@
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <PackageTags>DFA;lexer;scanner;matching</PackageTags>
     <PackageId>Luthor-tool</PackageId>
-    <Version>1.6.0</Version>
+    <Version>1.7.0</Version>
   </PropertyGroup>
 
   <ItemGroup>

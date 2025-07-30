@@ -27,6 +27,10 @@
     "C Comment": {
       "commandName": "Project",
       "commandLineArgs": "(/\\*(.|\\n)*?\\*/)|(//.*$) --graph ..\\..\\..\\graph.jpg --draft ..\\..\\..\\draft.jpg"
+    },
+    "C ASCII": {
+      "commandName": "Project",
+      "commandLineArgs": "(/\\*(.|\\n)*?\\*/)|(//.*$) --graph ..\\..\\..\\graph.jpg --draft ..\\..\\..\\draft.jpg --enc ascii"
     }
   }
 }

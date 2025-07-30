@@ -178,7 +178,7 @@ static class Program
             if (xformed)
             {
                 var tlen = dfa.GetArrayLength();
-                var finalSize = (tlen * 100 / mlen);
+                var finalSize = (tlen * 100 / len);
                 var expansionCost = (tlen * 100 / mlen) - 100;
                 string sizeChange = expansionCost >= 0
                     ? $"{expansionCost}% expansion cost"

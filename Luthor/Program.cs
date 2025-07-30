@@ -111,9 +111,10 @@ static class Program
                 Input = File.ReadAllText(Input);
             }
             Console.Error.WriteLine("Processing the following input:");
-            Console.Error.WriteLine(Input);
+            //Console.Error.WriteLine(Input);
             Console.Error.WriteLine();
             var expr = RegexExpression.Parse(Input!);
+            Console.Error.WriteLine(expr);
             var dfa = expr!.ToDfa();
             if (expr is RegexLexerExpression lexer)
             {
@@ -147,13 +148,14 @@ static class Program
                 }
                 dfa.RenderToFile(Draft.FullName,true);
             }
+            dfa.RenderToFile(@"..\..\..\dfa.jpg");
             var len = dfa.GetArrayLength();
-            //Console.Error.Write("Minimizing...");
-            //dfa = dfa.ToMinimized();
-            //var mlen = dfa.GetArrayLength();
-            //Console.Error.WriteLine($"done! {100-(mlen * 100 / len)}% size savings.");
-            //Console.Error.WriteLine($"Minimized machine has {dfa.FillClosure().Count} states.");
-            //dfa.RenderToFile(@"..\..\..\dfa.svg");
+            Console.Error.Write("Minimizing...");
+            dfa = dfa.ToMinimized();
+            var mlen = dfa.GetArrayLength();
+            Console.Error.WriteLine($"done! {100 - (mlen * 100 / len)}% size savings.");
+            Console.Error.WriteLine($"Minimized machine has {dfa.FillClosure().Count} states.");
+            dfa.RenderToFile(@"..\..\..\mdfa.jpg");
             var xformed = false;
 
             //dfa.RenderToFile(@"..\..\..\dfa.jpg");
@@ -168,8 +170,8 @@ static class Program
             if (xformed)
             {
                 var tlen = dfa.GetArrayLength();
-                var finalSize = (tlen * 100 / len);
-                var expansionCost = (tlen * 100 / len) - 100;
+                var finalSize = (tlen * 100 / mlen);
+                var expansionCost = (tlen * 100 / mlen) - 100;
                 string sizeChange = expansionCost >= 0
                     ? $"{expansionCost}% expansion cost"
                     : $"{Math.Abs(expansionCost)}% size reduction";

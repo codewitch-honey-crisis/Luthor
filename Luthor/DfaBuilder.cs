@@ -108,9 +108,10 @@ namespace Luthor
                 var lexer = (RegexLexerExpression)root;
                 var augmentedRules = new List<RegexExpression>();
                 int acceptSymbol = 0;
-
-                foreach (var rule in lexer.Rules)
-                {
+                Log(2, $"Processing {lexer.Rules.Count} lexer rules");
+                for (int i = 0; i < lexer.Rules.Count; i++) { 
+                    var rule = lexer.Rules[i];
+                    Log(3, $"Rule {i}: {lexer.Rules[i]}");
                     var endMarker = new RegexTerminatorExpression();
                     endMarkerToAcceptSymbol[endMarker] = acceptSymbol;
                     var augmentedRule = new RegexConcatExpression(rule, endMarker);
@@ -202,6 +203,8 @@ namespace Luthor
             switch (node)
             {
                 case RegexLexerExpression lexer:
+                    Log(3, $"Computing properties for lexer with {lexer.Rules.Count} rules");
+
                     // Compute properties for all rules first
                     foreach (var rule in lexer.Rules)
                         ComputeNodeProperties(rule);
@@ -211,11 +214,12 @@ namespace Luthor
 
                     // Lexer firstpos is union of all rules' firstpos
                     foreach (var rule in lexer.Rules)
-                        node.GetFirstPos(firstPosMap).UnionWith(rule.GetFirstPos(firstPosMap));
+                    {
+                        Log(3, $"Rule firstpos count: {rule.GetFirstPos(firstPosMap).Count}");
+                        node.GetFirstPos(firstPosMap).UnionWith(rule.GetFirstPos(firstPosMap)); // Keep only this one
+                    }
+                    Log(3, $"Total lexer firstpos count: {node.GetFirstPos(firstPosMap).Count}");
 
-                    // Lexer lastpos is union of all rules' lastpos  
-                    foreach (var rule in lexer.Rules)
-                        node.GetLastPos(lastPosMap).UnionWith(rule.GetLastPos(lastPosMap));
                     break;
 
                 case RegexConcatExpression concat:
@@ -367,7 +371,8 @@ namespace Luthor
             Log(2, "Constructing lazy-aware DFA with proper state semantics");
 
             var startPositions = augmented.GetFirstPos(firstPosMap);
-
+            
+            Log(2, $"Start state has {startPositions.Count} positions");
             // CRITICAL FIX: If root is nullable, start state should include end marker
             if (augmented.GetNullable(nullableMap))
             {

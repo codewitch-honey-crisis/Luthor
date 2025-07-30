@@ -639,25 +639,17 @@ namespace Luthor
                     // 2. It originates from an accepting state (needed for lazy quantifiers), OR  
                     // 3. It can eventually reach an accepting state
 
-                    if (ffa.IsAccept)
+                    
+                    // For non-accepting states, check if transition can reach accepting state
+                    foreach (var afa in trns.To.FillClosure())
                     {
-                        
-                        isDeadTransition = false;
-
-                        //Console.WriteLine($"Preserving transition [{trns.Min}-{trns.Max}] from accepting state");
-                    }
-                    else
-                    {
-                        // For non-accepting states, check if transition can reach accepting state
-                        foreach (var afa in trns.To.FillClosure())
+                        if (afa.IsAccept)
                         {
-                            if (afa.IsAccept)
-                            {
-                                isDeadTransition = false;
-                                break;
-                            }
+                            isDeadTransition = false;
+                            break;
                         }
                     }
+                    
 
                     if (isDeadTransition)
                     {

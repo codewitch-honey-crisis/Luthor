@@ -25,9 +25,10 @@ namespace LutherTest
             Console.WriteLine($"Testing expression AST: {expr}");
             var unminDfa = expr.ToDfa();
             unminDfa.RenderToFile(@"C:\Users\gazto\Pictures\test.jpg");
-            var utf16Dfa = DfaUtf16Transformer.TransformToUtf16(unminDfa);
-            var utf8Dfa = DfaUtf8Transformer.TransformToUtf8(unminDfa);
-            return (unminDfa, unminDfa, utf16Dfa, utf8Dfa);
+            var utf32Dfa = unminDfa.ToMinimized();
+            var utf16Dfa = DfaUtf16Transformer.TransformToUtf16(utf32Dfa);
+            var utf8Dfa = DfaUtf8Transformer.TransformToUtf8(utf32Dfa);
+            return (unminDfa, utf32Dfa, utf16Dfa, utf8Dfa);
         }
         void TestMatches(Runner runner, Dfa dfa, IEnumerable<(string Text, int ExpectingSymbol)> inputs)
         {

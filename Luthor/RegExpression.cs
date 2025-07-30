@@ -1765,7 +1765,7 @@ namespace Luthor
         {
             if (string.IsNullOrEmpty(Text))
             {
-                sb.AppendLine("@");
+                sb.AppendLine("#");
                 return;
             }
             var sr = new StringReader(Text);

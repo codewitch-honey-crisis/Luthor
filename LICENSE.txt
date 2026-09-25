@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2025 by honey the codewitch
+Copyright (c) 2026 by honey the codewitch
 
 The DFA lazy quantifier algorithm used in this code was created by Dr. Robert van Engelen, 
 and is implemented as part of his RE/FLEX project. All rights to that algorithm belong to him.

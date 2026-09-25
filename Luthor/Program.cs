@@ -52,7 +52,7 @@ static class Program
             {
                 patterns.Add(arg0);
             }
-            var states = Builder.Build(patterns);
+            var states = Builder.Build(patterns,true);
             var dfa = Compiler.Compile(states, args.Length == 2 ? args[1] : "UTF-8");
 
             for (var i = 0; i < dfa.Length; i++)

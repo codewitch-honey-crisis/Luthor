@@ -287,7 +287,7 @@ In Python, pass `text.encode("utf-8")` for a UTF-8 table (indexing `bytes` gives
 
 #### The error rule
 
-A table can be built with an extra catch-all rule at the lowest priority. It gets the accept id after the last rule, and it matches exactly one character wherever no other rule matches. Any code unit that can't start a valid character also becomes an error token of its own. That covers invalid UTF-8 bytes, lone surrogates in UTF-16, values above U+10FFFF in UTF-32, and bytes a code page doesn't define. A truncated multi-byte sequence becomes a single error token covering the units that were read.
+Tables are built with a catch-all rule at the lowest priority. It gets the accept id after the last rule, and it matches exactly one character wherever no other rule matches. Any code unit that can't start a valid character also becomes an error token of its own. That covers invalid UTF-8 bytes, lone surrogates in UTF-16, values above U+10FFFF in UTF-32, and bytes a code page doesn't define. A truncated multi-byte sequence becomes a single error token covering the units that were read.
 
 With the error rule, every position in the input produces a token of length at least 1. On valid input, error tokens always cover whole characters (for example, both bytes of `é` in UTF-8). A lexer never has to decide how far to skip; it just advances by the match length and treats the error id like any other token:
 

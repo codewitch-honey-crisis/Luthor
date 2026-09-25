@@ -19,28 +19,75 @@ namespace Luthor;
 
 internal static class Compiler
 {
-    internal static int[] Compile(IList<DfaState> cpDfa, string encoding = "UTF-8", bool minimize = true)
+    internal static int[] Compile(CodepointDfa cpDfa, string encoding = "UTF-8", bool minimize = true)
     {
-        var (states, newline) = Transform(cpDfa, encoding);
+        var (states, newline) = Transform(cpDfa.States, encoding, cpDfa.ErrorId);
         if (minimize) states = Minimize(states);
         return Flatten(states, newline);
     }
 
     // ---------------- encoding transform ----------------
-    private static (List<DfaState> States, int Newline) Transform(IList<DfaState> cp, string encoding)
+    private static (List<DfaState> States, int Newline) Transform(IList<DfaState> cp, string encoding, int errorId)
     {
+        // Start states: where a token begins (state 0, plus whatever its ^ and $ edges reach).
+        // Only these need error handling, because the error rule only ever matches the
+        // first character of a token.
+        var starts = new HashSet<int>();
+        if (errorId >= 0)
+            for (var work = new Stack<int>(new[] { 0 }); work.Count > 0;)
+            {
+                int s = work.Pop();
+                if (s < 0 || !starts.Add(s)) continue;
+                work.Push(cp[s].Bol); work.Push(cp[s].Eol);
+            }
+
+        // Start states always hold the catch-all rule's position, which no transition leads back
+        // to, so they can't be reached in the middle of a token.
+        if (cp.Any(st => st.Moves.Any(m => starts.Contains(m.To))))
+            throw new InvalidOperationException("a start state is reachable mid-token");
+
         string e = encoding.ToUpperInvariant().Replace("-", "").Replace("_", "");
+        List<DfaState> states; int newline = '\n', maxUnit;
         switch (e)
         {
-            case "UTF32": case "UTF32LE": case "UTF32BE":
-                return (Copy(cp, keepMoves: true), '\n');
+            case "UTF32":
+            case "UTF32LE":
+            case "UTF32BE":
+                states = Copy(cp, keepMoves: true); maxUnit = int.MaxValue; break;
             case "UTF8":
-                return (Sequenced(cp, Utf8Sequences), '\n');
-            case "UTF16": case "UTF16LE": case "UTF16BE": case "UNICODE":
-                return (Sequenced(cp, Utf16Sequences), '\n');
+                states = Sequenced(cp, Utf8Sequences, starts, errorId); maxUnit = 0xFF; break;
+            case "UTF16":
+            case "UTF16LE":
+            case "UTF16BE":
+            case "UNICODE":
+                states = Sequenced(cp, Utf16Sequences, starts, errorId); maxUnit = 0xFFFF; break;
             default:
-                return SingleByte(cp, encoding);
+                (states, newline) = SingleByte(cp, encoding); maxUnit = 0xFF; break;
         }
+
+        // Any code unit a start state has no move for (an invalid byte, a lone surrogate, a byte
+        // the code page doesn't define, ...) is a one-unit error token.
+        if (errorId >= 0)
+        {
+            int error = states.Count;
+            states.Add(new DfaState { Accept = errorId });
+            foreach (int s in starts) states[s].Moves = FillGaps(states[s].Moves, maxUnit, error);
+        }
+        return (states, newline);
+    }
+
+    static List<(int Lo, int Hi, int To)> FillGaps(List<(int Lo, int Hi, int To)> moves, int maxUnit, int to)
+    {
+        var res = new List<(int Lo, int Hi, int To)>();
+        long next = 0;
+        foreach (var m in moves)
+        {
+            if (m.Lo > next) res.Add(((int)next, m.Lo - 1, to));
+            res.Add(m);
+            next = (long)m.Hi + 1;
+        }
+        if (next <= maxUnit) res.Add(((int)next, maxUnit, to));
+        return res;
     }
 
     static List<DfaState> Copy(IList<DfaState> cp, bool keepMoves) =>
@@ -48,7 +95,8 @@ internal static class Compiler
 
     // Multi-unit encodings: every codepoint range becomes one or more sequences of
     // code-unit ranges; sequences leaving a state are merged into a trie of new states.
-    static List<DfaState> Sequenced(IList<DfaState> cp, Func<int, int, List<(int Lo, int Hi)[]>> seqs)
+    static List<DfaState> Sequenced(IList<DfaState> cp, Func<int, int, List<(int Lo, int Hi)[]>> seqs,
+        HashSet<int> starts, int errorId)
     {
         var states = Copy(cp, keepMoves: false);
         var memo = new Dictionary<string, int>();
@@ -57,7 +105,18 @@ internal static class Compiler
             var items = new List<((int Lo, int Hi)[] Seq, int To)>();
             foreach (var (lo, hi, to) in cp[s].Moves)
                 foreach (var seq in seqs(lo, hi)) items.Add((seq, to));
-            states[s].Moves = BuildTrie(items, 0, states, memo);
+            if (!starts.Contains(s))
+            {
+                states[s].Moves = BuildTrie(items, 0, states, memo);
+                continue;
+            }
+            // A start state gets its own, unshared trie whose partial-character states accept as
+            // the error rule: a truncated or malformed sequence becomes one error token covering
+            // the units read so far. Safe, because no real rule can have matched yet inside the
+            // first character; a complete character always reaches a longer match.
+            int first = states.Count;
+            states[s].Moves = BuildTrie(items, 0, states, new Dictionary<string, int>());
+            for (int k = first; k < states.Count; k++) states[k].Accept = errorId;
         }
         return states;
     }

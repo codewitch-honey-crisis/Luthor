@@ -190,7 +190,7 @@ Every traversal follows the same steps:
 4. Find the range containing the next code unit. If there is none, or the input is exhausted, stop.
 5. Move to its `target` and repeat from step 2.
 
-The result is the last remembered accept id and length. A length of 0 means nothing matched: a lexer should report an error and skip ahead (in UTF-8, preferably by a whole character).
+The result is the last remembered accept id and length. A length of 0 means nothing matched. Tables built with the error rule (below) never return that except at the end of input.
 
 **C** (UTF-8 or single-byte tables)
 
@@ -285,15 +285,20 @@ def luthor_match(dfa, units, pos=0, at_line_start=True):
 
 In Python, pass `text.encode("utf-8")` for a UTF-8 table (indexing `bytes` gives ints), or `[ord(c) for c in text]` for a UTF-32 table.
 
-A lexer calls the matcher repeatedly, advancing by the match length each time:
+#### The error rule
+
+A table can be built with an extra catch-all rule at the lowest priority. It gets the accept id after the last rule, and it matches exactly one character wherever no other rule matches. Any code unit that can't start a valid character also becomes an error token of its own. That covers invalid UTF-8 bytes, lone surrogates in UTF-16, values above U+10FFFF in UTF-32, and bytes a code page doesn't define. A truncated multi-byte sequence becomes a single error token covering the units that were read.
+
+With the error rule, every position in the input produces a token of length at least 1. On valid input, error tokens always cover whole characters (for example, both bytes of `é` in UTF-8). A lexer never has to decide how far to skip; it just advances by the match length and treats the error id like any other token:
 
 ```c
 size_t pos = 0, len;
 while (pos < n) {
     int at_line_start = pos == 0 || s[pos - 1] == dfa[0];
     int id = luthor_match(dfa, s + pos, n - pos, at_line_start, &len);
-    if (len == 0) { /* error: no rule matches here */ pos++; continue; }
-    /* token `id` is s[pos .. pos + len) */
+    /* token `id` is s[pos .. pos + len); id == number of rules means "error" */
     pos += len;
 }
 ```
+
+The error rule never changes what the other rules match. It only fills in the positions where they match nothing, and when it ties with another rule, the other rule wins. It makes tables somewhat larger (about a third, for the C-like lexer used in the examples), mostly because the start state gains ranges that cover every gap.

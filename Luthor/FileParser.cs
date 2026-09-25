@@ -19,7 +19,7 @@ static class FileParser
 		int lineNumber = 1;
         while ((line = reader.ReadLine()) != null)
 		{
-			if(line.StartsWith("#"))
+			if(line.StartsWith("#") || line.Trim().Length==0)
 			{
 				++lineNumber;
                 continue;

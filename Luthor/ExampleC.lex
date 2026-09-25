@@ -1,4 +1,5 @@
 ﻿# C example
+
 directive = ^#.*$
 block = /\*(.|\n)*?\*/
 line = //.*$

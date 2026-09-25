@@ -10,8 +10,8 @@
     <Description>A DFA lexer generator tool</Description>
     <Copyright>Copyright (C) 2026 by honey the codewitch</Copyright>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <AssemblyVersion>0.3.0.0</AssemblyVersion>
-    <FileVersion>0.3.0.0</FileVersion>
+    <AssemblyVersion>0.3.1.0</AssemblyVersion>
+    <FileVersion>0.3.1.0</FileVersion>
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
     <PublishTrimmed>False</PublishTrimmed>
     <PublishAot>False</PublishAot>
@@ -25,24 +25,11 @@
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <PackageTags>DFA;lexer;scanner;matching</PackageTags>
     <PackageId>Luthor-tool</PackageId>
-    <Version>3.0.0</Version>
+    <Version>3.1.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="Dfa.Compute.cs" />
-    <Compile Remove="Dfa.cs" />
-    <Compile Remove="DfaBuilder.cs" />
-    <Compile Remove="DfaBuilder.KnownPartGood.cs" />
-    <Compile Remove="DfaBuilder.v1.cs" />
-    <Compile Remove="DfaBuilder.v2.cs" />
-    <Compile Remove="DfaBuilder2.cs" />
-    <Compile Remove="DfaBuilder3.cs" />
-    <Compile Remove="DfaBuilder5.cs" />
-    <Compile Remove="DfaBuilderOldWip.cs" />
     <Compile Remove="Lexers\Lexer.cs" />
-    <Compile Remove="RegexExpression.Flatten.cs" />
-    <Compile Remove="RegexExpression.ToDfa.cs" />
-    <Compile Remove="RegexExpressionNewFailed.cs" />
   </ItemGroup>
 
   <ItemGroup>

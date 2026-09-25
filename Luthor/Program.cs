@@ -60,6 +60,7 @@ static class Program
             Console.Error.WriteLine($"{dfa.States.Count} states were built");
             
             var array = Compiler.Compile(dfa, args.Length == 2 ? args[1] : "UTF-8");
+            Console.Error.WriteLine($"The array has {array.Length} elements.");
             int width = 8;
             for (var i = 0; i < array.Length; i++)
             {

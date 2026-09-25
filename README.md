@@ -2,6 +2,9 @@
 
 A fast, compact lexer generator that produces simple integer arrays for efficient text matching in any programming language.
 
+This project is a C# .NET 8.0 console application that can be installed as a global dotnet tool.
+It also ships with luthor.py which is a pure Python implementation of the same algorithms, so you can use it without .NET.
+
 **Key Features:**
 - Direct-to-DFA conversion (no intermediate NFA)
 - Partial lazy quantifier support (`??`, `*?`, `+?`) - all expressions are accepted but due to limitations of DFA traversal some complicated lazy matches may end up partly or entirely greedy.

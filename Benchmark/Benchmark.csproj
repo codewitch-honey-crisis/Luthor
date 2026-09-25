@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Luthor\Builder.cs" Link="Builder.cs" />
+    <Compile Include="..\Luthor\Compiler.cs" Link="Compiler.cs" />
+    <Compile Include="..\Luthor\FileParser.cs" Link="FileParser.cs" />
+    <Compile Include="..\Luthor\Matcher.cs" Link="Matcher.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\Luthor\ExampleC.lex" Link="ExampleC.lex" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
+  </ItemGroup>
+
+</Project>

@@ -1,227 +1,80 @@
-﻿using Cli;
-
-using System.ComponentModel;
-using System.Globalization;
+using System.IO;
 using System.Text;
-using Luthor;
-enum ArrayType
-{
-    auto = 0,
-    ranged = 1,
-    unranged = 2
-}
-public class EncodingConverter : TypeConverter
-{
-    public override object? ConvertFrom(ITypeDescriptorContext? context, CultureInfo? culture, object value)
-    {
-        if(value is string)
-        {
-            var ostr = (string)value;
-            var str = ostr.ToLowerInvariant().Replace("-","");
-            switch(str)
-            {
-                case "ascii":
-                    return Encoding.ASCII;
-                case "utf8":
-                    return Encoding.UTF8;
-                case "utf16":
-                    return Encoding.Unicode;
-                case "utf32":
-                    return Encoding.UTF32;
-                default:
-                    return Encoding.GetEncoding(ostr);
-            }
-        }
-        return base.ConvertFrom(context, culture, value);
-    }
-}
+namespace Luthor;
 static class Program
 {
-    [CmdArg(Ordinal = 0, Description = "The input expression or file to use",ElementName="input")]
-    static string? Input = null;
-    [CmdArg(Name = "enc",Optional =true,ElementName ="encoding",ElementConverter ="EncodingConverter",Description ="The encoding to use (ASCII, UTF-8, UTF-16, or UTF-32, or a single byte encoding). Defaults to UTF-8")]
-    static Encoding Enc = Encoding.UTF8;
-    [CmdArg(Name = "array",Optional =true, ElementName="array",Description ="The type of array to generate, ranged or unranged. Defaults to auto which chooses the shorted length")]
-    static ArrayType array = ArrayType.auto;
-    [CmdArg(Name = "graph", Optional = true, ElementName = "graph", Description = "Generate a DFA state graph to the specified file (requires GraphViz)")]
-    static FileInfo Graph;
-    [CmdArg(Name = "draft", Optional = true, ElementName = "draft", Description = "Generate a DFA state graph draft to the specified file (requires GraphViz)")]
-    static FileInfo Draft;
-
-    [CmdArg(Name="?", Group="Help",Optional = true,Description = "Displays this help screen")]
-    static bool Help = false;
-    static void PrintArray(int[] arr)
+    static void PrintUsage()
     {
-        var num = 0;
-        for (int i = 0; i < arr.Length; i++)
+        Console.Error.WriteLine("Usage: Luthor <rules-file|pattern> [encoding]");
+        Console.Error.WriteLine("  rules-file: text file containing regex rules, one per line, in the format 'name = pattern' or '# comment' at the start of each line");
+        Console.Error.WriteLine("  pattern: a single pattern to match");
+        Console.Error.WriteLine("  encoding: character encoding to use (e.g., UTF-8, UTF-16). default is UTF-8");
+    }
+    static void Main(string[] args)
+    {
+        try
         {
-            if (i < arr.Length - 1)
+            Console.OutputEncoding = Encoding.UTF8;
+            if (args.Length < 1)
             {
-                Console.Write($"{arr[i]},");
+                throw new ArgumentException("The rules file or a pattern is required.");
             }
-            else
+            if (args.Length > 2)
             {
-                Console.Write(arr[i]);
+                throw new ArgumentException("Too many arguments provided.");
             }
-
-            if (++num == 20)
+            var arg0 = args[0];
+            if(arg0=="-?" || arg0.ToLowerInvariant()=="--help")
             {
-                num = 0;
+                PrintUsage();
+                return;
+            }
+            var isPattern = false;
+            if(arg0.IndexOfAny(Path.GetInvalidPathChars())>-1) {
+                isPattern = true;
+            } else if (!File.Exists(arg0)) {
+                isPattern= true;
+            }
+            var patterns = new List<string>();
+            if (!isPattern)
+            {
+                using var reader = new StreamReader(args[0], true);
+                var first = true;
+                foreach (var rule in FileParser.ReadFrom(reader))
+                {
+                    if (first) { first = false; } else { Console.WriteLine(", "); }
+                    Console.Write($"\"{rule.Name.Replace("\"", "\\\"")}\"");
+                    patterns.Add(rule.Pattern);
+                }
                 Console.WriteLine();
             }
             else
             {
-                Console.Write(" ");
+                patterns.Add(arg0);
             }
-        }
-        Console.WriteLine();
-    }
-    private static int GetArrayWidth(int[] array)
-    {
-        int max = int.MinValue;
-        for (int i = 0; i < array.Length; i++)
-        {
-            if (array[i] > max)
+            var states = Builder.Build(patterns);
+            var dfa = Compiler.Compile(states, args.Length == 2 ? args[1] : "UTF-8");
+
+            for (var i = 0; i < dfa.Length; i++)
             {
-                max = array[i];
+                if (i % 16 == 0)
+                {
+                    Console.WriteLine();
+                }
+                Console.Write(dfa[i]);
+                if (i < dfa.Length - 1)
+                {
+                    Console.Write(", ");
+                }
             }
-        }
-        if (max <= sbyte.MaxValue)
-        {
-            return 1;
-        }
-        else if (max <= short.MaxValue)
-        {
-            return 2;
-        }
-        return 4;
-    }
-    static string SafePrint(string s)
-    {
-        if (s == null) return "<null>";
-        if(s.Length > 80)
-        {
-            return s.Substring(0, 40) + "...<omitted>";
-        }
-        return s;
-    }
-    static void Main(string[] args)
-    {
-        using (var allArgs = CliUtility.ParseAndSet(args, null, typeof(Program), 0, null, "--"))
-        {
-            if(Help)
-            {
-                CliUtility.PrintUsage(CliUtility.GetSwitches(null, typeof(Program)), 0, null, "--");
-                return;
-            }
-            if(File.Exists(Input))
-            {
-                Input = File.ReadAllText(Input);
-            }
-            Console.Error.WriteLine("Processing the following input:");
-            Console.Error.WriteLine(Input);
-            var expr = RegexExpression.Parse(Input!);
             Console.WriteLine();
-            var dfa = expr!.ToDfa();
-            if (expr is RegexLexerExpression lexer)
-            {
-                Console.WriteLine("Individual rule expanded greedy expressions:");
-                foreach (var rule in lexer.Rules)
-                {
-                    Console.WriteLine(SafePrint(rule.ToDfa().ToString()));
-                }
-                Console.Error.WriteLine();
-                Console.WriteLine($"Amalgamated lexer greedy expression: {SafePrint(dfa.ToString())}");
-                Console.Error.WriteLine();
-            }
-            else
-            {
-                Console.WriteLine("Expanded greedy expression");
-                Console.WriteLine(SafePrint(dfa.ToString()));
-                Console.Error.WriteLine();
-            }
-            Console.Error.WriteLine($"Created initial machine with {dfa.FillClosure().Count} states.");
-            if (Graph != null)
-            {
-                if (Graph.Exists)
-                {
-                    try { Graph.Delete(); } catch { }
-                }
-                dfa.RenderToFile(Graph.FullName);
-            }
-            if (Draft != null)
-            {
-                if (Draft.Exists)
-                {
-                    try { Draft.Delete(); } catch { }
-                }
-                dfa.RenderToFile(Draft.FullName,true);
-            }
-            var len = dfa.GetArrayLength();
+            
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error: {ex.Message}");
             Console.Error.WriteLine();
-            Console.Error.Write("Minimizing...");
-            dfa = dfa.ToMinimized();
-            var mlen = dfa.GetArrayLength();
-            Console.Error.WriteLine($"done! {100 - (mlen * 100 / len)}% size savings.");
-            Console.Error.WriteLine($"Minimized machine has {dfa.FillClosure().Count} states.");
-            var xformed = false;
-            Console.Error.WriteLine();
-            //dfa.RenderToFile(@"..\..\..\dfa.jpg");
-            if (Enc != Encoding.UTF32)
-            {
-                Console.Error.Write($"Transforming to {Enc.EncodingName}...");
-                dfa = DfaEncodingTransform.Transform(dfa, Enc);
-                xformed = true;
-            }
-            //dfa.RenderToFile(@"..\..\..\xdfa.jpg");
-
-            if (xformed)
-            {
-                var tlen = dfa.GetArrayLength();
-                var finalSize = (tlen * 100 / len);
-                var expansionCost = (tlen * 100 / mlen) - 100;
-                string sizeChange = expansionCost >= 0
-                    ? $"{expansionCost}% expansion cost"
-                    : $"{Math.Abs(expansionCost)}% size reduction";
-
-                Console.Error.WriteLine($"done! {sizeChange}.");
-             
-                Console.Error.WriteLine($"Net effect: {finalSize}% of original length*.");
-
-            }
-            Console.Error.WriteLine();
-            int[] arr;
-            switch(array)
-            {
-                case ArrayType.ranged:
-                    arr = dfa.ToRangeArray(); break;
-                case ArrayType.unranged:
-                    arr = dfa.ToNonRangeArray(); break;
-                default:
-                    arr = dfa.ToArray(); break;
-            }
-
-            var width = GetArrayWidth(arr);
-            var label = (width!=1)?"bytes":"byte";
-
-            Console.Error.WriteLine($"The array takes a minimum of {width*arr.Length} bytes to store");
-            Console.Error.WriteLine();
-            if (Dfa.IsRangeArray(arr))
-            {
-                Console.Error.WriteLine($"Emitting ranged jump table array with a length of {arr.Length} and an element width of {width} {label}");
-            } else
-            {
-                Console.Error.WriteLine($"Emitting non-ranged jump table array with a length of {arr.Length} and an element width of {width} {label}");
-            }
-            if(!Dfa.HasAnchorsInArray(arr))
-            {
-                Console.Error.WriteLine("Note: This jump table does not have anchors, so the matching code may be simplified");
-            }
-            Console.Error.WriteLine();
-            Console.Error.WriteLine("* values do not reflect the relative width of the elements, only the total length of the array.");
-            Console.Error.WriteLine();
-            PrintArray(arr);
+            PrintUsage();
         }
     }
 }
-

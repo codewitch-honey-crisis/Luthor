@@ -59,29 +59,29 @@ luthor "if|while|for"
 ```
 
 ## Lexer Grammar
-For a full lexer, create a text file with one rule per line:
+For a full lexer, create a text file with one rule per line, or empty or comment lines:
 
 ```
 # C-like Language Lexer
 # Comments start with # (must have space or be alone)
 
 # Keywords
-keyword=if|while|for|int|void
+if|while|for|int|void
 
 # Identifiers  
-identifier=[A-Za-z_][A-Za-z0-9_]*
+[A-Za-z_][A-Za-z0-9_]*
 
 # Integers (decimal and hex)
-integer=0x[0-9a-fA-F]+|[0-9]+
+0x[0-9a-fA-F]+|[0-9]+
 
 # C-style comments
-block_comment=/\*(.|\n)*?\*/
+/\*(.|\n)*?\*/
 
 # Line comments  
 //.*$
 
 # Whitespace (usually ignored)
-whitespace=[ \t\n\r]+
+[ \t\n\r]+
 ```
 
 ### Rules:

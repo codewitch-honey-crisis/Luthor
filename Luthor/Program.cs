@@ -35,34 +35,53 @@ static class Program
             } else if (!File.Exists(arg0)) {
                 isPattern= true;
             }
+            var type = isPattern?"expression":"lexer";
+            Console.Error.WriteLine($"Luthor {type} compiler");
+            Console.Error.WriteLine();
             var patterns = new List<string>();
             if (!isPattern)
             {
                 using var reader = new StreamReader(args[0], true);
                 var first = true;
-                foreach (var rule in FileParser.ReadFrom(reader))
+                foreach (var pattern in FileParser.ReadFrom(reader))
                 {
-                    if (first) { first = false; } else { Console.WriteLine(", "); }
-                    Console.Write($"\"{rule.Name.Replace("\"", "\\\"")}\"");
-                    patterns.Add(rule.Pattern);
+                    patterns.Add(pattern);
                 }
-                Console.WriteLine();
             }
             else
             {
                 patterns.Add(arg0);
             }
-            var states = Builder.Build(patterns,true);
-            var dfa = Compiler.Compile(states, args.Length == 2 ? args[1] : "UTF-8");
-
-            for (var i = 0; i < dfa.Length; i++)
+            if(!isPattern)
+            {
+                Console.Error.WriteLine($"There are {patterns.Count} patterns.");
+            }
+            var dfa = Builder.Build(patterns,true);
+            Console.Error.WriteLine($"{dfa.States.Count} states were built");
+            
+            var array = Compiler.Compile(dfa, args.Length == 2 ? args[1] : "UTF-8");
+            int width = 8;
+            for (var i = 0; i < array.Length; i++)
+            {
+                var n = array[i];
+                if(width==8 &&n>127)
+                {
+                    width = 16;
+                }
+                if(width==16 && n > 32767)
+                {
+                    width = 32;
+                }
+            }
+            Console.Error.WriteLine($"The array element width is {width} bits.");
+            for (var i = 0; i < array.Length; i++)
             {
                 if (i % 16 == 0)
                 {
                     Console.WriteLine();
                 }
-                Console.Write(dfa[i]);
-                if (i < dfa.Length - 1)
+                Console.Write(array[i]);
+                if (i < array.Length - 1)
                 {
                     Console.Write(", ");
                 }

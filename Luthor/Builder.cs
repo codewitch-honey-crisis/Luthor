@@ -1,4 +1,4 @@
-// Lazy-quantifier DFA construction in the style of RE/flex (Robert van Engelen).
+// Lazy-quantifier DFA construction in the style of RE/flex (Dr. Robert van Engelen).
 // Direct followpos construction; lazy quantifiers are handled by tagging positions
 // with a lazy index and trimming DFA states during subset construction.
 // LazyAsu builds a DFA over Unicode codepoints; DfaEncoder turns it into a code-unit table.

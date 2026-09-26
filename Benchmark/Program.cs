@@ -51,7 +51,6 @@ static int match(const int* dfa, const unsigned char* s, size_t n, int at_line_s
     return accept;
 }
 ";
-    private const int N = 10000;
     private readonly int[] lexerArray;
 
     public LuthorBenchmark()

@@ -1,7 +1,7 @@
 // Lazy-quantifier DFA construction in the style of RE/flex (Dr. Robert van Engelen).
 // Direct followpos construction; lazy quantifiers are handled by tagging positions
 // with a lazy index and trimming DFA states during subset construction.
-// LazyAsu builds a DFA over Unicode codepoints; DfaEncoder turns it into a code-unit table.
+// Builder builds a DFA over Unicode codepoints; Compilerturns it into a code-unit table.
 //
 // Syntax: literals, escapes (\n \r \t \f \v \0 \xHH \x{H..} \uHHHH \d \D \w \W \s \S),
 // '.', [...] / [^...], ( ), |, *, +, ?, {n}, {n,}, {n,m}, lazy forms of all quantifiers,

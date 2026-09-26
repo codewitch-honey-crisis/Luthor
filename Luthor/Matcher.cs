@@ -1,4 +1,4 @@
-// Traversal of the flat int[] produced by DfaEncoder. Works on any code-unit span:
+// Traversal of the flat int[] produced by Compier. Works on any code-unit span:
 // ReadOnlySpan<byte> for UTF-8 and single-byte encodings, ReadOnlySpan<char> for UTF-16,
 // ReadOnlySpan<int> for UTF-32.
 

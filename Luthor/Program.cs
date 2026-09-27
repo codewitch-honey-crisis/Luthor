@@ -5,10 +5,11 @@ static class Program
 {
     static void PrintUsage()
     {
-        Console.Error.WriteLine("Usage: Luthor <rules-file|pattern> [encoding]");
+        Console.Error.WriteLine("Usage: Luthor <rules-file|pattern> [encoding] [--noerror]");
         Console.Error.WriteLine("  rules-file: text file containing regex rules, one per line, in the format 'name = pattern' or '# comment' at the start of each line");
         Console.Error.WriteLine("  pattern: a single pattern to match");
         Console.Error.WriteLine("  encoding: character encoding to use (e.g., UTF-8, UTF-16). default is UTF-8");
+        Console.Error.WriteLine("  noerror: do not generate the error rule");
     }
     static void Main(string[] args)
     {
@@ -19,7 +20,7 @@ static class Program
             {
                 throw new ArgumentException("The rules file or a pattern is required.");
             }
-            if (args.Length > 2)
+            if (args.Length > 3)
             {
                 throw new ArgumentException("Too many arguments provided.");
             }
@@ -42,7 +43,6 @@ static class Program
             if (!isPattern)
             {
                 using var reader = new StreamReader(args[0], true);
-                var first = true;
                 foreach (var pattern in FileParser.ReadFrom(reader))
                 {
                     patterns.Add(pattern);
@@ -56,10 +56,39 @@ static class Program
             {
                 Console.Error.WriteLine($"There are {patterns.Count} patterns.");
             }
-            var dfa = Builder.Build(patterns,true);
-            Console.Error.WriteLine($"{dfa.States.Count} states were built");
-            
-            var array = Compiler.Compile(dfa, args.Length == 2 ? args[1] : "UTF-8");
+            var enc = "UTF-8";
+            if(args.Length==3)
+            {
+                enc = args[2].ToUpperInvariant();
+            } else if(args.Length == 2)
+            {
+                if (args[1] != "-n" && args[1] != "--noerror") {
+                    args[1].ToUpperInvariant();
+                }
+            }
+            var noerror = false;
+            if(args.Length==2)
+            {
+
+                if (args[1] == "-n" || args[1] == "--noerror")
+                {
+                    noerror = true;
+                } 
+                  
+            } else if(args.Length==3)
+            {
+                if (args[2] == "-n" || args[2] == "--noerror")
+                {
+                    noerror = true;
+                }
+            }
+            var dfa = Builder.Build(patterns, !noerror);
+            if(noerror)
+            {
+                Console.Error.WriteLine("The error rule was not generated.");
+            }   
+            Console.Error.WriteLine($"{dfa.States.Count} states were built.");
+            var array = Compiler.Compile(dfa, enc);
             Console.Error.WriteLine($"The array has {array.Length} elements.");
             int width = 8;
             for (var i = 0; i < array.Length; i++)

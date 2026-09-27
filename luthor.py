@@ -998,13 +998,13 @@ def read_rules(text):
 
 def _print_usage():
     err = sys.stderr
-    print("Usage: luthor.py <rules-file|pattern> [encoding]", file=err)
+    print("Usage: luthor.py <rules-file|pattern> [encoding] [--noerror]", file=err)
     print("  rules-file: text file containing regex rules, one per line, in the format "
           "'name = pattern' or '# comment' at the start of each line", file=err)
     print("  pattern: a single pattern to match", file=err)
     print("  encoding: character encoding to use (e.g., utf-8, utf-16, cp1252). "
           "default is UTF-8", file=err)
-
+    print("  --noerror: do not generate the error rule", file=err)
 
 def main(argv):
     try:
@@ -1014,7 +1014,7 @@ def main(argv):
             pass
         if len(argv) < 1:
             raise ValueError("The rules file or a pattern is required.")
-        if len(argv) > 2:
+        if len(argv) > 3:
             raise ValueError("Too many arguments provided.")
         arg0 = argv[0]
         if arg0 == "-?" or arg0.lower() == "--help":
@@ -1029,10 +1029,25 @@ def main(argv):
             print(f"There are {len(patterns)} patterns.", file=sys.stderr)
         else:
             patterns = [arg0]
-        dfa = Builder.build(patterns, True)
-        print(f"{len(dfa.states)} states were built", file=sys.stderr)
 
-        array = compile_dfa(dfa, argv[1] if len(argv) == 2 else "UTF-8")
+        noerror = False
+        if len(argv)==3 and (argv[2] == "--noerror" or argv[2]=="-n"):
+            noerror = True
+        if len(argv) == 2 and not noerror:
+            if(argv[1] == "--noerror" or argv[1]=="-n"):
+                noerror = True
+
+        enc = "UTF-8"
+        if (not noerror and len(argv)==2) or (len(argv)==3):
+                enc = argv[1]
+        if noerror:
+            print("The error rule was not generated.", file=sys.stderr)
+        
+        dfa = Builder.build(patterns, not noerror)
+        
+        print(f"{len(dfa.states)} states were built.", file=sys.stderr)
+
+        array = compile_dfa(dfa, enc)
         print(f"The array has {len(array)} elements.", file=sys.stderr)
         width = 8
         for n in array:

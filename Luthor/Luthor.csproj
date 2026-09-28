@@ -30,6 +30,9 @@
 
   <ItemGroup>
     <Compile Remove="Lexers\Lexer.cs" />
+    <Compile Remove="Lexers\lexer_utf16.cs" />
+    <Compile Remove="Lexers\lexer_utf32.cs" />
+    <Compile Remove="Lexers\lexer_utf8.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -42,6 +45,9 @@
       <PackagePath>\</PackagePath>
     </None>
     <None Include="Lexers\Lexer.cs" />
+    <None Include="Lexers\lexer_utf16.cs" />
+    <None Include="Lexers\lexer_utf32.cs" />
+    <None Include="Lexers\lexer_utf8.cs" />
   </ItemGroup>
 
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">

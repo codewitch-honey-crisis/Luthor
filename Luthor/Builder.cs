@@ -383,7 +383,7 @@ namespace Luthor
         // Rule 0 has the highest priority when several rules accept the same length.
         // errorRule adds a catch-all rule with the lowest priority (accept id = rules.Count) that
         // matches any single character, so every position of the input produces a token. The
-        // encoder extends it to invalid code units (see DfaEncoder).
+        // encoder extends it to invalid code units (see Compiler).
         internal static CodepointDfa Build(IReadOnlyList<string> rules, bool errorRule = false)
         {
             var builder = new Builder();

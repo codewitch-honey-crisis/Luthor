@@ -611,353 +611,359 @@ def _dedup_sorted(s):
 # ============================================================================
 
 
-def compile_dfa(cp_dfa, encoding="UTF-8", minimize=True):
-    states, newline = _transform(cp_dfa.states, encoding, cp_dfa.error_id)
-    if minimize:
-        states = _minimize(states)
-    return _flatten(states, newline)
+class Compiler:
+    """Static-only, like the C# static class. Entry point: Compiler.compile."""
 
+    @staticmethod
+    def compile(cp_dfa, encoding="UTF-8", minimize=True):
+        states, newline = Compiler._transform(cp_dfa.states, encoding, cp_dfa.error_id)
+        if minimize:
+            states = Compiler._minimize(states)
+        return Compiler._flatten(states, newline)
 
-# ---------------- encoding transform ----------------
+    # ---------------- encoding transform ----------------
 
-def _transform(cp, encoding, error_id):
-    # Start states: where a token begins (state 0, plus whatever its ^ and $ edges reach).
-    # Only these need error handling, because the error rule only ever matches the first
-    # character of a token.
-    starts = set()
-    if error_id >= 0:
-        work = [0]
-        while work:
-            s = work.pop()
-            if s < 0 or s in starts:
-                continue
-            starts.add(s)
-            work.append(cp[s].bol)
-            work.append(cp[s].eol)
+    @staticmethod
+    def _transform(cp, encoding, error_id):
+        # Start states: where a token begins (state 0, plus whatever its ^ and $ edges reach).
+        # Only these need error handling, because the error rule only ever matches the first
+        # character of a token.
+        starts = set()
+        if error_id >= 0:
+            work = [0]
+            while work:
+                s = work.pop()
+                if s < 0 or s in starts:
+                    continue
+                starts.add(s)
+                work.append(cp[s].bol)
+                work.append(cp[s].eol)
 
-    # Start states always hold the catch-all rule's position, which no transition leads back to,
-    # so they can't be reached in the middle of a token.
-    if any(m[2] in starts for st in cp for m in st.moves):
-        raise RuntimeError("a start state is reachable mid-token")
+        # Start states always hold the catch-all rule's position, which no transition leads back to,
+        # so they can't be reached in the middle of a token.
+        if any(m[2] in starts for st in cp for m in st.moves):
+            raise RuntimeError("a start state is reachable mid-token")
 
-    e = encoding.upper().replace("-", "").replace("_", "")
-    newline = 10
-    if e in ("UTF32", "UTF32LE", "UTF32BE"):
-        states = _copy(cp, keep_moves=True)
-        max_unit = 0x7FFFFFFF
-    elif e == "UTF8":
-        states = _sequenced(cp, _utf8_sequences, starts, error_id)
-        max_unit = 0xFF
-    elif e in ("UTF16", "UTF16LE", "UTF16BE", "UNICODE"):
-        states = _sequenced(cp, _utf16_sequences, starts, error_id)
-        max_unit = 0xFFFF
-    else:
-        states, newline = _single_byte(cp, encoding)
-        max_unit = 0xFF
-
-    # Any code unit a start state has no move for (an invalid byte, a lone surrogate, a byte the
-    # code page doesn't define, ...) is a one-unit error token.
-    if error_id >= 0:
-        error = len(states)
-        states.append(DfaState(accept=error_id))
-        for s in starts:
-            states[s].moves = _fill_gaps(states[s].moves, max_unit, error)
-    return states, newline
-
-
-def _fill_gaps(moves, max_unit, to):
-    res = []
-    nxt = 0
-    for m in moves:
-        if m[0] > nxt:
-            res.append((nxt, m[0] - 1, to))
-        res.append(m)
-        nxt = m[1] + 1
-    if nxt <= max_unit:
-        res.append((nxt, max_unit, to))
-    return res
-
-
-def _copy(cp, keep_moves):
-    return [DfaState(s.accept, s.bol, s.eol, list(s.moves) if keep_moves else []) for s in cp]
-
-
-def _sequenced(cp, seqs, starts, error_id):
-    """Multi-unit encodings: every codepoint range becomes one or more sequences of code-unit
-    ranges; sequences leaving a state are merged into a trie of new states."""
-    states = _copy(cp, keep_moves=False)
-    memo = {}
-    for s in range(len(cp)):
-        items = []
-        for lo, hi, to in cp[s].moves:
-            for seq in seqs(lo, hi):
-                items.append((seq, to))
-        if s not in starts:
-            states[s].moves = _build_trie(items, 0, states, memo)
-            continue
-        # A start state gets its own, unshared trie whose partial-character states accept as the
-        # error rule: a truncated or malformed sequence becomes one error token covering the
-        # units read so far.
-        first = len(states)
-        states[s].moves = _build_trie(items, 0, states, {})
-        for k in range(first, len(states)):
-            states[k].accept = error_id
-    return states
-
-
-def _build_trie(items, depth, states, memo):
-    moves = []
-    points = sorted({x for seq, _ in items for x in (seq[depth][0], seq[depth][1] + 1)})
-    for j in range(len(points) - 1):
-        lo, hi = points[j], points[j + 1] - 1
-        group = [t for t in items if t[0][depth][0] <= lo and hi <= t[0][depth][1]]
-        if not group:
-            continue
-        if all(len(t[0]) == depth + 1 for t in group):
-            to = group[0][1]
-            if any(t[1] != to for t in group):
-                raise RuntimeError("ambiguous encoding")
+        e = encoding.upper().replace("-", "").replace("_", "")
+        newline = 10
+        if e in ("UTF32", "UTF32LE", "UTF32BE"):
+            states = Compiler._copy(cp, keep_moves=True)
+            max_unit = 0x7FFFFFFF
+        elif e == "UTF8":
+            states = Compiler._sequenced(cp, Compiler._utf8_sequences, starts, error_id)
+            max_unit = 0xFF
+        elif e in ("UTF16", "UTF16LE", "UTF16BE", "UNICODE"):
+            states = Compiler._sequenced(cp, Compiler._utf16_sequences, starts, error_id)
+            max_unit = 0xFFFF
         else:
-            if any(len(t[0]) == depth + 1 for t in group):
-                raise RuntimeError("mixed sequence lengths")
-            # share identical suffix sub-tries
-            key = tuple(sorted((tuple(t[0][depth + 1:]), t[1]) for t in group))
-            to = memo.get(key)
-            if to is None:
-                to = len(states)
-                states.append(DfaState())
-                memo[key] = to
-                states[to].moves = _build_trie(group, depth + 1, states, memo)
-        if moves and moves[-1][2] == to and moves[-1][1] + 1 == lo:
-            moves[-1] = (moves[-1][0], hi, to)
-        else:
-            moves.append((lo, hi, to))
-    return moves
+            states, newline = Compiler._single_byte(cp, encoding)
+            max_unit = 0xFF
 
+        # Any code unit a start state has no move for (an invalid byte, a lone surrogate, a byte the
+        # code page doesn't define, ...) is a one-unit error token.
+        if error_id >= 0:
+            error = len(states)
+            states.append(DfaState(accept=error_id))
+            for s in starts:
+                states[s].moves = Compiler._fill_gaps(states[s].moves, max_unit, error)
+        return states, newline
 
-def _no_surrogates(lo, hi):
-    """Splits [lo,hi] around the surrogate block, which is not encodable in UTF-8/UTF-16."""
-    if hi < 0xD800 or lo > 0xDFFF:
-        return [(lo, hi)]
-    res = []
-    if lo < 0xD800:
-        res.append((lo, 0xD7FF))
-    if hi > 0xDFFF:
-        res.append((0xE000, hi))
-    return res
+    @staticmethod
+    def _fill_gaps(moves, max_unit, to):
+        res = []
+        nxt = 0
+        for m in moves:
+            if m[0] > nxt:
+                res.append((nxt, m[0] - 1, to))
+            res.append(m)
+            nxt = m[1] + 1
+        if nxt <= max_unit:
+            res.append((nxt, max_unit, to))
+        return res
 
+    @staticmethod
+    def _copy(cp, keep_moves):
+        return [DfaState(s.accept, s.bol, s.eol, list(s.moves) if keep_moves else []) for s in cp]
 
-def _utf8_sequences(lo, hi):
-    res = []
-    for a, b in _no_surrogates(lo, hi):
-        s = a  # split where the encoded length changes
-        for limit in (0x7F, 0x7FF, 0xFFFF, 0x10FFFF):
-            if s > b:
-                break
-            if s > limit:
+    @staticmethod
+    def _sequenced(cp, seqs, starts, error_id):
+        """Multi-unit encodings: every codepoint range becomes one or more sequences of code-unit
+        ranges; sequences leaving a state are merged into a trie of new states."""
+        states = Compiler._copy(cp, keep_moves=False)
+        memo = {}
+        for s in range(len(cp)):
+            items = []
+            for lo, hi, to in cp[s].moves:
+                for seq in seqs(lo, hi):
+                    items.append((seq, to))
+            if s not in starts:
+                states[s].moves = Compiler._build_trie(items, 0, states, memo)
                 continue
-            _utf8_split(s, min(b, limit), res)
-            s = limit + 1
-    return res
+            # A start state gets its own, unshared trie whose partial-character states accept as the
+            # error rule: a truncated or malformed sequence becomes one error token covering the
+            # units read so far.
+            first = len(states)
+            states[s].moves = Compiler._build_trie(items, 0, states, {})
+            for k in range(first, len(states)):
+                states[k].accept = error_id
+        return states
 
+    @staticmethod
+    def _build_trie(items, depth, states, memo):
+        moves = []
+        points = sorted({x for seq, _ in items for x in (seq[depth][0], seq[depth][1] + 1)})
+        for j in range(len(points) - 1):
+            lo, hi = points[j], points[j + 1] - 1
+            group = [t for t in items if t[0][depth][0] <= lo and hi <= t[0][depth][1]]
+            if not group:
+                continue
+            if all(len(t[0]) == depth + 1 for t in group):
+                to = group[0][1]
+                if any(t[1] != to for t in group):
+                    raise RuntimeError("ambiguous encoding")
+            else:
+                if any(len(t[0]) == depth + 1 for t in group):
+                    raise RuntimeError("mixed sequence lengths")
+                # share identical suffix sub-tries
+                key = tuple(sorted((tuple(t[0][depth + 1:]), t[1]) for t in group))
+                to = memo.get(key)
+                if to is None:
+                    to = len(states)
+                    states.append(DfaState())
+                    memo[key] = to
+                    states[to].moves = Compiler._build_trie(group, depth + 1, states, memo)
+            if moves and moves[-1][2] == to and moves[-1][1] + 1 == lo:
+                moves[-1] = (moves[-1][0], hi, to)
+            else:
+                moves.append((lo, hi, to))
+        return moves
 
-def _utf8_split(lo, hi, res):
-    """Same encoded length assumed. Splits until every byte position is an independent range."""
-    n = len(_utf8_encode(lo))
-    for k in range(1, n):
-        m = (1 << (6 * k)) - 1
+    @staticmethod
+    def _no_surrogates(lo, hi):
+        """Splits [lo,hi] around the surrogate block, which is not encodable in UTF-8/UTF-16."""
+        if hi < 0xD800 or lo > 0xDFFF:
+            return [(lo, hi)]
+        res = []
+        if lo < 0xD800:
+            res.append((lo, 0xD7FF))
+        if hi > 0xDFFF:
+            res.append((0xE000, hi))
+        return res
+
+    @staticmethod
+    def _utf8_sequences(lo, hi):
+        res = []
+        for a, b in Compiler._no_surrogates(lo, hi):
+            s = a  # split where the encoded length changes
+            for limit in (0x7F, 0x7FF, 0xFFFF, 0x10FFFF):
+                if s > b:
+                    break
+                if s > limit:
+                    continue
+                Compiler._utf8_split(s, min(b, limit), res)
+                s = limit + 1
+        return res
+
+    @staticmethod
+    def _utf8_split(lo, hi, res):
+        """Same encoded length assumed. Splits until every byte position is an independent range."""
+        n = len(Compiler._utf8_encode(lo))
+        for k in range(1, n):
+            m = (1 << (6 * k)) - 1
+            if (lo & ~m) != (hi & ~m):
+                if (lo & m) != 0:
+                    Compiler._utf8_split(lo, lo | m, res)
+                    Compiler._utf8_split((lo | m) + 1, hi, res)
+                    return
+                if (hi & m) != m:
+                    Compiler._utf8_split(lo, (hi & ~m) - 1, res)
+                    Compiler._utf8_split(hi & ~m, hi, res)
+                    return
+        res.append(tuple(zip(Compiler._utf8_encode(lo), Compiler._utf8_encode(hi))))
+
+    @staticmethod
+    def _utf8_encode(cp):
+        if cp < 0x80:
+            return [cp]
+        if cp < 0x800:
+            return [0xC0 | cp >> 6, 0x80 | cp & 0x3F]
+        if cp < 0x10000:
+            return [0xE0 | cp >> 12, 0x80 | cp >> 6 & 0x3F, 0x80 | cp & 0x3F]
+        return [0xF0 | cp >> 18, 0x80 | cp >> 12 & 0x3F, 0x80 | cp >> 6 & 0x3F, 0x80 | cp & 0x3F]
+
+    @staticmethod
+    def _utf16_sequences(lo, hi):
+        res = []
+        for a, b in Compiler._no_surrogates(lo, hi):
+            if a <= 0xFFFF:
+                res.append(((a, min(b, 0xFFFF)),))
+            if b >= 0x10000:
+                Compiler._utf16_split(max(a, 0x10000) - 0x10000, b - 0x10000, res)
+        return res
+
+    @staticmethod
+    def _utf16_split(lo, hi, res):
+        m = 0x3FF
         if (lo & ~m) != (hi & ~m):
             if (lo & m) != 0:
-                _utf8_split(lo, lo | m, res)
-                _utf8_split((lo | m) + 1, hi, res)
+                Compiler._utf16_split(lo, lo | m, res)
+                Compiler._utf16_split((lo | m) + 1, hi, res)
                 return
             if (hi & m) != m:
-                _utf8_split(lo, (hi & ~m) - 1, res)
-                _utf8_split(hi & ~m, hi, res)
+                Compiler._utf16_split(lo, (hi & ~m) - 1, res)
+                Compiler._utf16_split(hi & ~m, hi, res)
                 return
-    res.append(tuple(zip(_utf8_encode(lo), _utf8_encode(hi))))
+        res.append(((0xD800 + (lo >> 10), 0xD800 + (hi >> 10)), (0xDC00 + (lo & m), 0xDC00 + (hi & m))))
 
+    @staticmethod
+    def _is_single_byte_codec(info):
+        # Python has no IsSingleByte flag. Its single-byte codecs are the charmap codecs, whose
+        # modules carry a decoding_table, plus the built-in ascii and latin-1.
+        if info.name in ("ascii", "iso8859-1", "latin-1"):
+            return True
+        module = sys.modules.get(getattr(info.incrementaldecoder, "__module__", ""), None)
+        return module is not None and hasattr(module, "decoding_table")
 
-def _utf8_encode(cp):
-    if cp < 0x80:
-        return [cp]
-    if cp < 0x800:
-        return [0xC0 | cp >> 6, 0x80 | cp & 0x3F]
-    if cp < 0x10000:
-        return [0xE0 | cp >> 12, 0x80 | cp >> 6 & 0x3F, 0x80 | cp & 0x3F]
-    return [0xF0 | cp >> 18, 0x80 | cp >> 12 & 0x3F, 0x80 | cp >> 6 & 0x3F, 0x80 | cp & 0x3F]
-
-
-def _utf16_sequences(lo, hi):
-    res = []
-    for a, b in _no_surrogates(lo, hi):
-        if a <= 0xFFFF:
-            res.append(((a, min(b, 0xFFFF)),))
-        if b >= 0x10000:
-            _utf16_split(max(a, 0x10000) - 0x10000, b - 0x10000, res)
-    return res
-
-
-def _utf16_split(lo, hi, res):
-    m = 0x3FF
-    if (lo & ~m) != (hi & ~m):
-        if (lo & m) != 0:
-            _utf16_split(lo, lo | m, res)
-            _utf16_split((lo | m) + 1, hi, res)
-            return
-        if (hi & m) != m:
-            _utf16_split(lo, (hi & ~m) - 1, res)
-            _utf16_split(hi & ~m, hi, res)
-            return
-    res.append(((0xD800 + (lo >> 10), 0xD800 + (hi >> 10)), (0xDC00 + (lo & m), 0xDC00 + (hi & m))))
-
-
-def _is_single_byte_codec(info):
-    # Python has no IsSingleByte flag. Its single-byte codecs are the charmap codecs, whose
-    # modules carry a decoding_table, plus the built-in ascii and latin-1.
-    if info.name in ("ascii", "iso8859-1", "latin-1"):
-        return True
-    module = sys.modules.get(getattr(info.incrementaldecoder, "__module__", ""), None)
-    return module is not None and hasattr(module, "decoding_table")
-
-
-def _single_byte(cp, name):
-    """Any single-byte Python codec (ascii, latin-1, iso8859-x, cp125x, EBCDIC cp037/cp500, ...)."""
-    try:
-        info = codecs.lookup(name)
-    except LookupError:
-        raise ValueError(f"'{name}' is not a known encoding name") from None
-    if not _is_single_byte_codec(info):
-        raise ValueError(f"{name} is not UTF-8/16/32 or a single-byte encoding")
-    cp_of = []
-    for b in range(256):
+    @staticmethod
+    def _single_byte(cp, name):
+        """Any single-byte Python codec (ascii, latin-1, iso8859-x, cp125x, EBCDIC cp037/cp500, ...)."""
         try:
-            s = bytes([b]).decode(info.name)
-            cp_of.append(ord(s) if len(s) == 1 else -1)
-        except UnicodeDecodeError:
-            cp_of.append(-1)
-    newline = -1
-    try:
-        nl = "\n".encode(info.name)
-        if len(nl) == 1:
-            newline = nl[0]
-    except UnicodeEncodeError:
-        pass
-
-    states = _copy(cp, keep_moves=False)
-    for s in range(len(cp)):
-        moves = states[s].moves
+            info = codecs.lookup(name)
+        except LookupError:
+            raise ValueError(f"'{name}' is not a known encoding name") from None
+        if not Compiler._is_single_byte_codec(info):
+            raise ValueError(f"{name} is not UTF-8/16/32 or a single-byte encoding")
+        cp_of = []
         for b in range(256):
-            if cp_of[b] < 0:
-                continue
-            to = _lookup(cp[s].moves, cp_of[b])
-            if to < 0:
-                continue
-            if moves and moves[-1][2] == to and moves[-1][1] + 1 == b:
-                moves[-1] = (moves[-1][0], b, to)
+            try:
+                s = bytes([b]).decode(info.name)
+                cp_of.append(ord(s) if len(s) == 1 else -1)
+            except UnicodeDecodeError:
+                cp_of.append(-1)
+        newline = -1
+        try:
+            nl = "\n".encode(info.name)
+            if len(nl) == 1:
+                newline = nl[0]
+        except UnicodeEncodeError:
+            pass
+
+        states = Compiler._copy(cp, keep_moves=False)
+        for s in range(len(cp)):
+            moves = states[s].moves
+            for b in range(256):
+                if cp_of[b] < 0:
+                    continue
+                to = Compiler._lookup(cp[s].moves, cp_of[b])
+                if to < 0:
+                    continue
+                if moves and moves[-1][2] == to and moves[-1][1] + 1 == b:
+                    moves[-1] = (moves[-1][0], b, to)
+                else:
+                    moves.append((b, b, to))
+        return states, newline
+
+    @staticmethod
+    def _lookup(moves, c):
+        lo, hi = 0, len(moves) - 1
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            if c < moves[mid][0]:
+                hi = mid - 1
+            elif c > moves[mid][1]:
+                lo = mid + 1
             else:
-                moves.append((b, b, to))
-    return states, newline
+                return moves[mid][2]
+        return -1
 
+    # ---------------- minimization (Moore partition refinement) ----------------
 
-def _lookup(moves, c):
-    lo, hi = 0, len(moves) - 1
-    while lo <= hi:
-        mid = (lo + hi) // 2
-        if c < moves[mid][0]:
-            hi = mid - 1
-        elif c > moves[mid][1]:
-            lo = mid + 1
-        else:
-            return moves[mid][2]
-    return -1
+    @staticmethod
+    def _minimize(states):
+        n = len(states)
+        cls = [0] * n
+        count = 1
+        while True:
+            ids = {}
+            nxt = [0] * n
+            for s in range(n):
+                st = states[s]
+                key = (cls[s], st.accept,
+                       -1 if st.bol < 0 else cls[st.bol],
+                       -1 if st.eol < 0 else cls[st.eol],
+                       tuple(Compiler._merge_by(st.moves, lambda t: cls[t])))
+                k = ids.get(key)
+                if k is None:
+                    k = ids[key] = len(ids)
+                nxt[s] = k
+            cls = nxt
+            if len(ids) == count:
+                break
+            count = len(ids)
 
+        # renumber in BFS order from the start state (drops unreachable states)
+        order = {cls[0]: 0}
+        rep = [0]
 
-# ---------------- minimization (Moore partition refinement) ----------------
-
-def _minimize(states):
-    n = len(states)
-    cls = [0] * n
-    count = 1
-    while True:
-        ids = {}
-        nxt = [0] * n
-        for s in range(n):
-            st = states[s]
-            key = (cls[s], st.accept,
-                   -1 if st.bol < 0 else cls[st.bol],
-                   -1 if st.eol < 0 else cls[st.eol],
-                   tuple(_merge_by(st.moves, lambda t: cls[t])))
-            k = ids.get(key)
+        def num(s):
+            if s < 0:
+                return -1
+            k = order.get(cls[s])
             if k is None:
-                k = ids[key] = len(ids)
-            nxt[s] = k
-        cls = nxt
-        if len(ids) == count:
-            break
-        count = len(ids)
+                k = order[cls[s]] = len(rep)
+                rep.append(s)
+            return k
 
-    # renumber in BFS order from the start state (drops unreachable states)
-    order = {cls[0]: 0}
-    rep = [0]
+        result = []
+        k = 0
+        while k < len(rep):
+            st = states[rep[k]]
+            bol = num(st.bol)
+            eol = num(st.eol)
+            result.append(DfaState(st.accept, bol, eol, Compiler._merge_by(st.moves, num)))
+            k += 1
+        return result
 
-    def num(s):
-        if s < 0:
-            return -1
-        k = order.get(cls[s])
-        if k is None:
-            k = order[cls[s]] = len(rep)
-            rep.append(s)
-        return k
+    @staticmethod
+    def _merge_by(moves, fn):
+        res = []
+        for lo, hi, to in moves:
+            t = fn(to)
+            if res and res[-1][2] == t and res[-1][1] + 1 == lo:
+                res[-1] = (res[-1][0], hi, t)
+            else:
+                res.append((lo, hi, t))
+        return res
 
-    result = []
-    k = 0
-    while k < len(rep):
-        st = states[rep[k]]
-        bol = num(st.bol)
-        eol = num(st.eol)
-        result.append(DfaState(st.accept, bol, eol, _merge_by(st.moves, num)))
-        k += 1
-    return result
+    # ---------------- flatten ----------------
+
+    HEADER = 1  # ints before the start state
+
+    @staticmethod
+    def _flatten(states, newline):
+        off = []
+        size = Compiler.HEADER
+        for st in states:
+            off.append(size)
+            size += 4 + 3 * len(st.moves)
+        dfa = [0] * size
+        dfa[0] = newline
+        for s, st in enumerate(states):
+            k = off[s]
+            dfa[k] = st.accept
+            dfa[k + 1] = -1 if st.bol < 0 else off[st.bol]
+            dfa[k + 2] = -1 if st.eol < 0 else off[st.eol]
+            dfa[k + 3] = len(st.moves)
+            k += 4
+            for lo, hi, to in st.moves:
+                dfa[k] = lo
+                dfa[k + 1] = hi
+                dfa[k + 2] = off[to]
+                k += 3
+        return dfa
 
 
-def _merge_by(moves, fn):
-    res = []
-    for lo, hi, to in moves:
-        t = fn(to)
-        if res and res[-1][2] == t and res[-1][1] + 1 == lo:
-            res[-1] = (res[-1][0], hi, t)
-        else:
-            res.append((lo, hi, t))
-    return res
-
-
-# ---------------- flatten ----------------
-
-HEADER = 1  # ints before the start state
-
-
-def _flatten(states, newline):
-    off = []
-    size = HEADER
-    for st in states:
-        off.append(size)
-        size += 4 + 3 * len(st.moves)
-    dfa = [0] * size
-    dfa[0] = newline
-    for s, st in enumerate(states):
-        k = off[s]
-        dfa[k] = st.accept
-        dfa[k + 1] = -1 if st.bol < 0 else off[st.bol]
-        dfa[k + 2] = -1 if st.eol < 0 else off[st.eol]
-        dfa[k + 3] = len(st.moves)
-        k += 4
-        for lo, hi, to in st.moves:
-            dfa[k] = lo
-            dfa[k + 1] = hi
-            dfa[k + 2] = off[to]
-            k += 3
-    return dfa
+compile_dfa = Compiler.compile  # backward-compatible alias
 
 
 # ============================================================================
@@ -1047,7 +1053,7 @@ def main(argv):
         
         print(f"{len(dfa.states)} states were built.", file=sys.stderr)
 
-        array = compile_dfa(dfa, enc)
+        array = Compiler.compile(dfa, enc)
         print(f"The array has {len(array)} elements.", file=sys.stderr)
         width = 8
         for n in array:

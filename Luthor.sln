@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
-VisualStudioVersion = 18.10.12217.157 stable
+VisualStudioVersion = 18.10.12217.157
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Luthor", "Luthor\Luthor.csproj", "{65C6722C-CD15-42F4-8A87-F85EA165A152}"
 EndProject
@@ -13,6 +13,25 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Benchmark", "Benchmark\Benchmark.csproj", "{04C2606B-EC4D-44E0-BC84-FC08448CE9CC}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Lexers", "Lexers", "{6B30FE92-0A9F-4320-AF39-D778FDD7F9BB}"
+	ProjectSection(SolutionItems) = preProject
+		Lexers\lexer_utf16.c = Lexers\lexer_utf16.c
+		Lexers\lexer_utf16.cs = Lexers\lexer_utf16.cs
+		Lexers\lexer_utf16.js = Lexers\lexer_utf16.js
+		Lexers\lexer_utf16.py = Lexers\lexer_utf16.py
+		Lexers\lexer_utf16.rs = Lexers\lexer_utf16.rs
+		Lexers\lexer_utf32.c = Lexers\lexer_utf32.c
+		Lexers\lexer_utf32.cs = Lexers\lexer_utf32.cs
+		Lexers\lexer_utf32.js = Lexers\lexer_utf32.js
+		Lexers\lexer_utf32.py = Lexers\lexer_utf32.py
+		Lexers\lexer_utf32.rs = Lexers\lexer_utf32.rs
+		Lexers\lexer_utf8.c = Lexers\lexer_utf8.c
+		Lexers\lexer_utf8.cs = Lexers\lexer_utf8.cs
+		Lexers\lexer_utf8.js = Lexers\lexer_utf8.js
+		Lexers\lexer_utf8.py = Lexers\lexer_utf8.py
+		Lexers\lexer_utf8.rs = Lexers\lexer_utf8.rs
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

@@ -149,6 +149,7 @@ index 14:  0, -1, -1, 4,                       state 14: accepts id 0, no anchor
           95, 95, 14,                            '_'     -> state 14
           97, 122, 14                            'a'-'z' -> state 14
 ```
+![identifier graph](identifier.jpg)
 
 Matching `foo_1 bar`: start at state 1; `f` moves to state 14 (accepting, so remember "id 0, length 1"); `o`, `o`, `_` and `1` stay in state 14, each time remembering the longer match; the space matches no range, so matching stops. The result is the last remembered match: id 0, length 5.
 

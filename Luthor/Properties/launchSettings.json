@@ -10,7 +10,7 @@
     },
     "ExampleC.lex": {
       "commandName": "Project",
-      "commandLineArgs": "..\\..\\..\\ExampleC.lex UTF-8"
+      "commandLineArgs": "..\\..\\..\\ExampleC.lex UTF-8 --graph ..\\..\\..\\dfa.jpg --vertical"
     }
   }
 }

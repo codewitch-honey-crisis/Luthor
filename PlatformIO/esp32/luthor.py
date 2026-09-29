@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Luthor: a lexer generator that compiles regular expressions into flat int arrays.
 
-Single-file Python port of the C# tool (Program.cs, FileParser.cs, Builder.cs, Compiler.cs).
-It produces the same arrays as the C# version. Single-byte code pages use Python codec
-names (cp1252, cp037, iso8859-15, ...), so their byte mappings follow Python's tables.
+Single-file Python port of the C# tool (Program.cs, FileParser.cs, Builder.cs, Compiler.cs,
+Graph.cs). It produces the same arrays and the same Graphviz output as the C# version.
+Single-byte code pages use Python codec names (cp1252, cp037, iso8859-15, ...), so their byte
+mappings follow Python's tables. Rendering a graph to an image needs Graphviz's dot on the PATH.
 
-Usage: luthor.py <rules-file|pattern> [encoding]
+Usage: luthor.py <rules-file|pattern> [encoding] [--noerror] [--graph <path> [--vertical]]
 """
 
 import codecs
@@ -967,6 +968,161 @@ compile_dfa = Compiler.compile  # backward-compatible alias
 
 
 # ============================================================================
+# Graph: renders a codepoint DFA (from Builder.build) as a Graphviz graph.
+# ============================================================================
+
+
+class GraphOptions:
+    def __init__(self, dpi=300, state_prefix="q", hide_symbol_ids=False, symbol_names=None,
+                 vertical=False):
+        self.dpi = dpi                          # resolution, in dots-per-inch, to render at
+        self.state_prefix = state_prefix        # prefix used for state labels
+        self.hide_symbol_ids = hide_symbol_ids  # hide accept ids (names, when given, still show)
+        self.symbol_names = symbol_names        # maps accept ids to names for display
+        self.vertical = vertical                # top to bottom instead of left to right
+
+
+class Graph:
+    """Static-only, like the C# static class. Entry points: Graph.write_to, Graph.render_to_file."""
+
+    @staticmethod
+    def write_to(dfa, out, options=None):
+        """Writes Graphviz dot source for the DFA to the text stream out."""
+        options = options or GraphOptions()
+        states = dfa.states
+        w = out.write
+        w("digraph FA {\n")
+        w("\trankdir=TB;\n" if options.vertical else "\trankdir=LR;\n")
+        w("\tnode [shape=circle];\n")
+
+        # states
+        for s, st in enumerate(states):
+            label = f"{_html(options.state_prefix)}<SUB>{s}</SUB>"
+            symbol = Graph._symbol_text(st.accept, options) if st.accept >= 0 else None
+            if symbol is not None:
+                label += "<BR/>" + _html(symbol)
+            w(f"\ts{s} [label=<{label}>")
+            if st.accept >= 0:
+                w(", shape=doublecircle")
+            w("];\n")
+
+        # character moves: one edge per target, all ranges to that target merged into one label
+        for s, st in enumerate(states):
+            by_target = {}  # insertion-ordered: targets in order of first appearance
+            for lo, hi, to in st.moves:
+                by_target.setdefault(to, []).append((lo, hi))
+            for to, ranges in by_target.items():
+                w(f"\ts{s} -> s{to} [label=<{_html(Graph._range_label(ranges))}>];\n")
+
+            # zero-width anchor edges
+            if st.bol >= 0:
+                w(f"\ts{s} -> s{st.bol} [label=<^>, style=dashed, color=gray, fontcolor=gray];\n")
+            if st.eol >= 0:
+                w(f"\ts{s} -> s{st.eol} [label=<$>, style=dashed, color=gray, fontcolor=gray];\n")
+        w("}\n")
+
+    @staticmethod
+    def render_to_file(dfa, filename, options=None):
+        """Renders the DFA to filename. The extension picks the format: .dot writes the dot source;
+        anything else (.png, .jpg, .svg, .pdf, ...) is rendered by Graphviz's dot."""
+        import io
+        import subprocess
+
+        options = options or GraphOptions()
+        ext = os.path.splitext(filename)[1].lstrip(".").lower()
+        if not ext:
+            raise ValueError("The output filename needs an extension to indicate the format")
+
+        buf = io.StringIO()
+        Graph.write_to(dfa, buf, options)
+        source = buf.getvalue()
+        if ext == "dot":
+            with open(filename, "w", encoding="utf-8", newline="\n") as fh:
+                fh.write(source)
+            return
+
+        args = ["dot", "-T" + ext]
+        if options.dpi > 0:
+            args.append(f"-Gdpi={options.dpi}")
+        args.append("-o" + filename)
+        try:
+            # labels can contain any Unicode character, and dot reads UTF-8
+            proc = subprocess.run(args, input=source.encode("utf-8"), stdout=subprocess.DEVNULL,
+                                  stderr=subprocess.PIPE)
+        except FileNotFoundError:
+            raise RuntimeError('Graphviz "dot" application is either not installed '
+                               'or not in the system PATH') from None
+        if proc.returncode != 0:
+            msg = proc.stderr.decode("utf-8", errors="replace").strip()
+            raise RuntimeError(f'Graphviz "dot" failed: {msg}')
+
+    # ---------------- labels ----------------
+
+    @staticmethod
+    def _symbol_text(accept_id, options):
+        """The name if one is provided, otherwise the id unless ids are hidden."""
+        names = options.symbol_names
+        if names is not None and accept_id < len(names) and names[accept_id]:
+            return names[accept_id]
+        return None if options.hide_symbol_ids else str(accept_id)
+
+    @staticmethod
+    def _range_label(ranges):
+        """Regex-style label for a set of codepoint ranges: a single character, a class, or a
+        negated class, whichever is shorter."""
+        rset = _normalize(ranges)
+        if len(rset) == 1 and rset[0][0] == rset[0][1]:
+            return _escape_cp(rset[0][0], in_class=False)
+        comp = _complement(rset)
+        if not comp:
+            return "any"
+        pos = "[" + Graph._class_body(rset) + "]"
+        neg = "[^" + Graph._class_body(comp) + "]"
+        return neg if len(neg) < len(pos) else pos
+
+    @staticmethod
+    def _class_body(rset):
+        out = []
+        for lo, hi in rset:
+            out.append(_escape_cp(lo, in_class=True))
+            if hi == lo:
+                continue
+            if hi != lo + 1:  # two adjacent characters read better as "ab" than "a-b"
+                out.append("-")
+            out.append(_escape_cp(hi, in_class=True))
+        return "".join(out)
+
+
+_ESCAPES = {10: r"\n", 13: r"\r", 9: r"\t", 12: r"\f", 11: r"\v", 0: r"\0"}
+_META = "\\.*+?()|[]{}^$"
+_CLASS_META = "\\]^-["
+# Categories that don't render as a visible glyph: control, format, surrogate, private use,
+# unassigned, and the separators (which include ' ', invisible as a label).
+_INVISIBLE = {"Cc", "Cf", "Cs", "Co", "Cn", "Zs", "Zl", "Zp"}
+
+
+def _escape_cp(cp, in_class):
+    """Escapes a codepoint using the same escape syntax the Builder accepts."""
+    import unicodedata
+    if cp in _ESCAPES:
+        return _ESCAPES[cp]
+    if cp < 0x80 and chr(cp) in (_CLASS_META if in_class else _META):
+        return "\\" + chr(cp)
+    if unicodedata.category(chr(cp)) not in _INVISIBLE:
+        return chr(cp)
+    if cp <= 0xFF:
+        return f"\\x{cp:02X}"
+    if cp <= 0xFFFF:
+        return f"\\u{cp:04X}"
+    return f"\\x{{{cp:X}}}"
+
+
+def _html(s):
+    """Escapes text for a Graphviz HTML-like label."""
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+# ============================================================================
 # FileParser: one rule per line; blank lines and lines starting with '#' are skipped.
 # ============================================================================
 
@@ -1004,13 +1160,52 @@ def read_rules(text):
 
 def _print_usage():
     err = sys.stderr
-    print("Usage: luthor.py <rules-file|pattern> [encoding] [--noerror]", file=err)
+    print("Usage: luthor.py <rules-file|pattern> [encoding] [--noerror] [--graph <path> [--vertical]]",
+          file=err)
     print("  rules-file: text file containing regex rules, one per line, in the format "
           "'name = pattern' or '# comment' at the start of each line", file=err)
     print("  pattern: a single pattern to match", file=err)
     print("  encoding: character encoding to use (e.g., utf-8, utf-16, cp1252). "
           "default is UTF-8", file=err)
     print("  --noerror: do not generate the error rule", file=err)
+    print("  --graph: path to save the generated graph (dot,jpg,png,svg) - requires GraphViz", file=err)
+    print("  --vertical: lay the graph out top to bottom instead of left to right", file=err)
+
+
+class _UsageError(ValueError):
+    pass
+
+
+def _parse_options(argv):
+    """Options after the rules file or pattern, in any order:
+    [encoding] [--noerror] [--graph <path> [--vertical]]"""
+    enc = None
+    noerror = False
+    graph_path = None
+    vertical = False
+    i = 1
+    while i < len(argv):
+        arg = argv[i]
+        if arg in ("-n", "--noerror"):
+            noerror = True
+        elif arg in ("-g", "--graph"):
+            if graph_path is not None:
+                raise _UsageError("--graph was specified more than once.")
+            if i + 1 >= len(argv) or argv[i + 1].startswith("-"):
+                raise _UsageError("--graph requires an output path.")
+            i += 1
+            graph_path = argv[i]
+        elif arg in ("-v", "--vertical"):
+            vertical = True
+        elif enc is None and not arg.startswith("-"):
+            enc = arg
+        else:
+            raise _UsageError(f"Unexpected argument '{arg}'.")
+        i += 1
+    if vertical and graph_path is None:
+        raise _UsageError("--vertical requires --graph.")
+    return enc or "UTF-8", noerror, graph_path, vertical
+
 
 def main(argv):
     try:
@@ -1019,13 +1214,12 @@ def main(argv):
         except (AttributeError, ValueError):
             pass
         if len(argv) < 1:
-            raise ValueError("The rules file or a pattern is required.")
-        if len(argv) > 3:
-            raise ValueError("Too many arguments provided.")
+            raise _UsageError("The rules file or a pattern is required.")
         arg0 = argv[0]
         if arg0 == "-?" or arg0.lower() == "--help":
             _print_usage()
             return
+        enc, noerror, graph_path, vertical = _parse_options(argv)
         is_pattern = "\0" in arg0 or not os.path.isfile(arg0)
         kind = "expression" if is_pattern else "lexer"
         print(f"Luthor {kind} compiler", file=sys.stderr)
@@ -1036,22 +1230,16 @@ def main(argv):
         else:
             patterns = [arg0]
 
-        noerror = False
-        if len(argv)==3 and (argv[2] == "--noerror" or argv[2]=="-n"):
-            noerror = True
-        if len(argv) == 2 and not noerror:
-            if(argv[1] == "--noerror" or argv[1]=="-n"):
-                noerror = True
-
-        enc = "UTF-8"
-        if (not noerror and len(argv)==2) or (len(argv)==3):
-                enc = argv[1]
         if noerror:
             print("The error rule was not generated.", file=sys.stderr)
-        
+
         dfa = Builder.build(patterns, not noerror)
-        
+
         print(f"{len(dfa.states)} states were built.", file=sys.stderr)
+
+        if graph_path is not None:
+            Graph.render_to_file(dfa, graph_path, GraphOptions(dpi=600, vertical=vertical))
+            print(f"The graph was written to {graph_path}.", file=sys.stderr)
 
         array = Compiler.compile(dfa, enc)
         print(f"The array has {len(array)} elements.", file=sys.stderr)
@@ -1072,10 +1260,12 @@ def main(argv):
                 out.append(", ")
         out.append("\n")
         sys.stdout.write("".join(out))
-    except Exception as ex:  # mirrors the C# catch-all
+    except ValueError as ex:  # bad arguments (like C#'s ArgumentException): show the usage
         print(f"Error: {ex}", file=sys.stderr)
         print(file=sys.stderr)
         _print_usage()
+    except Exception as ex:
+        print(f"Error: {ex}", file=sys.stderr)
 
 
 if __name__ == "__main__":

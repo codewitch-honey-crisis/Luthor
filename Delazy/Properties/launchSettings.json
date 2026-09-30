@@ -1,12 +1,8 @@
 {
   "profiles": {
-    "Usage": {
-      "commandName": "Project",
-      "commandLineArgs": "--help"
-    },
     "Block Comment": {
       "commandName": "Project",
-      "commandLineArgs": "\"\\/\\*(.|\\n)*?\\*\\/\""
+      "commandLineArgs": "-v \"\\/\\*(.|\\n)*?\\*\\/\""
     }
   }
 }

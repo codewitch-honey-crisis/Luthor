@@ -30,8 +30,6 @@ static int match(const TYPE* dfa, const unsigned char* s, size_t n, int at_line_
 
 void setup() {
     Serial.begin(115200);
-    
-    
 }
 
 void loop() {
@@ -55,4 +53,5 @@ void loop() {
         pos += len;
     }
     delay(5000);
+    Serial.println();
 }

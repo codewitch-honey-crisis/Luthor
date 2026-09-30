@@ -11,10 +11,6 @@
     "ExampleC.lex": {
       "commandName": "Project",
       "commandLineArgs": "..\\..\\..\\ExampleC.lex UTF-8 --graph ..\\..\\..\\dfa.jpg --vertical"
-    },
-    "Profile 1": {
-      "commandName": "Project",
-      "commandLineArgs": "\"^#[a-z]*$\" --noerror --graph ..\\..\\..\\dfa.jpg"
     }
   }
 }

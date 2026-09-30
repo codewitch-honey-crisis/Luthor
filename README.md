@@ -164,6 +164,7 @@ index  5: -1, -1, -1, 1,  35, 35, 12            '#' -> 12
 index 12: -1, -1, 19, 1,  97, 122, 12           'a'-'z' -> 12; at a line end, eol -> 19
 index 19:  0, -1, -1, 1,  97, 122, 12           accepts id 0; 'a'-'z' -> 12
 ```
+![directive graph](directive.jpg)
 
 Before each step the matcher:
 

@@ -2,7 +2,7 @@
   "profiles": {
     "Block Comment": {
       "commandName": "Project",
-      "commandLineArgs": "-v \"\\/\\*(.|\\n)*?\\*\\/\""
+      "commandLineArgs": "\"\\/\\*(.|\\n)*?\\*\\/\""
     }
   }
 }

@@ -307,3 +307,7 @@ while (pos < n) {
 ```
 
 The error rule never changes what the other rules match. It only fills in the positions where they match nothing, and when it ties with another rule, the other rule wins. It makes tables somewhat larger (about a third, for the C-like lexer used in the examples), mostly because the start state gains ranges that cover every gap.
+
+## Delazy
+
+Delazy is a companion tool that takes a regular expression and replaces any lazy quantifiers with greedy ones. It is more of a curiousity than practical, but it may be useful for testing or for generating an expression that can be used with a standard DFA engine. There is no python port, and it's not shipped as a dotnet tool, but you can build it from the source in the `delazy` folder.

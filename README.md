@@ -66,7 +66,7 @@ For a full lexer, create a text file with one rule per line, or empty or comment
 
 ```
 # C-like Language Lexer
-# Comments start with # (must have space or be alone)
+# Comments start with # and must be the first non-whitespace character on the line. Blank lines are ignored.
 
 # Keywords
 if|while|for|int|void

@@ -6,11 +6,11 @@
     },
     "Identifier": {
       "commandName": "Project",
-      "commandLineArgs": "[A-Z_a-z][A-Z_a-z0-9]* --noerror --graph ..\\..\\..\\dfa.jpg"
+      "commandLineArgs": "[A-Z_a-z][A-Z_a-z0-9]* --noerror"
     },
     "ExampleC.lex": {
       "commandName": "Project",
-      "commandLineArgs": "..\\..\\..\\ExampleC.lex UTF-8 --graph ..\\..\\..\\dfa.jpg --vertical"
+      "commandLineArgs": "..\\..\\..\\ExampleC.lex UTF-8"
     }
   }
 }

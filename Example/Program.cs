@@ -1,6 +1,7 @@
 using System.Text;
 using Example;
 
+Console.OutputEncoding=Encoding.UTF8;
 const string source = """
     #include "stdio.h"
     /* multi-line

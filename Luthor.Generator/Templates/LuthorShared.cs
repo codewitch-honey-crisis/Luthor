@@ -50,6 +50,11 @@ namespace Luthor
         /// page by name or number ("latin1", "windows-1252", "437", ...).
         /// </summary>
         public string? Encoding { get; set; }
+
+        /// <summary>
+        /// When set, also supports unicode characters in character classes, e.g. <c>[[:L:]]</c> for letters, <c>[[:Lu:]]</c> for uppercase letters, etc.
+        /// </summary>
+        public bool Unicode { get; set; } = false;
     }
 
     /// <summary>Input encoding for the byte-level tokenizers: how code units are laid out in bytes.</summary>

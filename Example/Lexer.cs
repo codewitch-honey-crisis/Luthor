@@ -15,7 +15,7 @@ namespace Example;
 [Rule("String", @"""([^""\\\n]|\\.)*""")]
 [Rule("Ws", @"[ \t\r\n]+")]
 [Rule("Op", @"[-+*/=<>!;,(){}]")]
-[Lexer(Encoding = "UTF-8")]
+[Lexer(Encoding = "UTF-8",Unicode=true)]
 partial class Lexer
 {
 }

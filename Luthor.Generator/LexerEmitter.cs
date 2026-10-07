@@ -70,7 +70,7 @@ internal static class LexerEmitter
         EncodingKind? enc = null;
         try
         {
-            var cp = Builder.Build(patterns, m.ErrorRule);
+            var cp = Builder.Build(patterns, m.ErrorRule,m.Unicode);
             dfa = Compiler.Compile(cp, "UTF-16");
             if (m.Encoding is not null)
             {

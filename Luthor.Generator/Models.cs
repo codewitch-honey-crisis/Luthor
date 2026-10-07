@@ -75,6 +75,7 @@ internal sealed record LexerModel(
     EquatableArray<RuleModel> Rules,
     bool ErrorRule,
     string? Encoding,
+    bool Unicode,
     LocationInfo? EncodingLocation,
     LocationInfo? TypeLocation,
     EquatableArray<DiagnosticInfo> Diagnostics); // found while reading the syntax; if any are errors, nothing is emitted

@@ -109,6 +109,7 @@ internal static class ModelReader
 
         bool errorRule = true;
         string? encoding = null;
+        bool unicode = false;
         LocationInfo? encodingLocation = null;
         var lexerAttr = all.FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == LexerGenerator.LexerAttributeName);
         if (lexerAttr is not null)
@@ -117,6 +118,7 @@ internal static class ModelReader
             {
                 if (kv.Key == "ErrorRule" && kv.Value.Value is bool b) errorRule = b;
                 else if (kv.Key == "Encoding" && kv.Value.Value is string s && s.Length > 0) encoding = s;
+                else if (kv.Key == "Unicode" && kv.Value.Value is bool bb) unicode = bb;
             }
             var attrSyntax = lexerAttr.ApplicationSyntaxReference?.GetSyntax(ct) as AttributeSyntax;
             encodingLocation = LocationInfo.From(
@@ -133,6 +135,7 @@ internal static class ModelReader
             new EquatableArray<RuleModel>(rules),
             errorRule,
             encoding,
+            unicode,
             encodingLocation,
             typeLocation,
             new EquatableArray<DiagnosticInfo>(diags));

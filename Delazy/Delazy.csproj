@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <Compile Include="..\Luthor\Builder.cs" Link="Builder.cs" />
+    <Compile Include="..\Luthor\UnicodeClasses.cs" Link="UnicodeClasses.cs" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,58 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Source generators are loaded by the compiler (which may run on .NET Framework inside
+       Visual Studio), so this project must target netstandard2.0. The projects that USE the
+       generator target net8.0. -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <IsRoslynComponent>true</IsRoslynComponent>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <RootNamespace>Luthor.Generator</RootNamespace>
+
+    <!-- NuGet packaging: the generator goes in analyzers/, not lib/ -->
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <DevelopmentDependency>true</DevelopmentDependency>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <PackageId>Luthor.Generator</PackageId>
+    <Description>Incremental source generator that builds DFA lexers from [Rule] attributes.</Description>
+
+    <!-- Where Builder.cs / Compiler.cs live. They are compiled in as linked files, unmodified. -->
+    <LuthorSourceDir Condition="'$(LuthorSourceDir)' == ''">$(MSBuildThisFileDirectory)..\Luthor\</LuthorSourceDir>
+
+    <!-- 4.8 is the Roslyn that shipped with the .NET 8 SDK; don't go higher than the oldest
+         compiler you need to support. -->
+    <RoslynVersion Condition="'$(RoslynVersion)' == ''">4.8.0</RoslynVersion>
+    <RoslynAnalyzersVersion Condition="'$(RoslynAnalyzersVersion)' == ''">3.3.4</RoslynAnalyzersVersion>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <Title>Luthor Source Generator</Title>
+    <Authors>honey the codewitch</Authors>
+    <Copyright>Copyright (C) 2026 by honey the codewitch</Copyright>
+    <AssemblyVersion>5.0.0.0</AssemblyVersion>
+    <FileVersion>5.0.0.0</FileVersion>
+    <Version>5.0.0</Version>
+    <RepositoryUrl>https://github.com/codewitch-honey-crisis/Luthor</RepositoryUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="$(RoslynVersion)" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="$(RoslynAnalyzersVersion)" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="$(LuthorSourceDir)Builder.cs" Link="Luthor\Builder.cs" />
+    <Compile Include="$(LuthorSourceDir)Compiler.cs" Link="Luthor\Compiler.cs" />
+    <Compile Include="$(LuthorSourceDir)\UnicodeClasses.cs" Link="Luthor\UnicodeClasses.cs" />
+
+    <!-- Emitted verbatim into every consuming assembly; not compiled here. -->
+    <Compile Remove="Templates\**" />
+    <EmbeddedResource Include="Templates\LuthorShared.cs" LogicalName="Luthor.Generator.LuthorShared.cs" />
+    <AdditionalFiles Include="AnalyzerReleases.Shipped.md;AnalyzerReleases.Unshipped.md" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+  </ItemGroup>
+
+</Project>

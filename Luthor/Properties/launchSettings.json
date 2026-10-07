@@ -6,11 +6,11 @@
     },
     "Identifier": {
       "commandName": "Project",
-      "commandLineArgs": "[A-Z_a-z][A-Z_a-z0-9]* --noerror"
+      "commandLineArgs": "[A-Z_a-z][A-Z_a-z0-9]* --no-error"
     },
     "ExampleC.lex": {
       "commandName": "Project",
-      "commandLineArgs": "..\\..\\..\\ExampleC.lex UTF-8"
+      "commandLineArgs": "..\\..\\..\\ExampleC.lex -e UTF-8"
     }
   }
 }

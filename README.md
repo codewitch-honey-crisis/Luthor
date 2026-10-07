@@ -4,6 +4,7 @@ A fast, compact lexer generator that produces simple integer arrays for efficien
 
 This project is a C# .NET 8.0 console application that can be installed as a global dotnet tool.
 It also ships with luthor.py which is a pure Python implementation of the same algorithms, so you can use it without .NET.
+For C# projects there is also **Luthor.Generator**, a NuGet package that builds the lexer at compile time from attributes on a partial class (see [Source Generator](#source-generator-luthorgenerator)).
 
 **Key Features:**
 - Direct-to-DFA conversion (no intermediate NFA)
@@ -11,6 +12,7 @@ It also ships with luthor.py which is a pure Python implementation of the same a
 - Unicode support (UTF-8, UTF-16, UTF-32)
 - Compact array output suitable for embedded systems
 - Language-agnostic - use the arrays in C, C++, Rust, etc.
+- C# source generator - declare rules as attributes and get a ready-to-use lexer class, with no build step to run by hand
 
 ## What Luthor Does
 
@@ -50,6 +52,136 @@ luthor "[0-9]+"
 ```bash
 luthor mylexer.lex
 ```
+
+### Options
+
+```
+luthor <rules-file|pattern> [--encoding <encoding>] [--no-error] [--unicode] [--graph <graph-file>] [--vertical] [--dpi <dpi>]
+```
+
+| Option | Meaning |
+|---|---|
+| `-e`, `--encoding <encoding>` | Encoding of the generated table (default UTF-8) |
+| `-n`, `--no-error` | Do not generate the [error rule](#the-error-rule) |
+| `-u`, `--unicode` | Use Unicode definitions for [character classes](#character-classes) |
+| `-g`, `--graph <graph-file>` | Also write a DFA graph; the extension picks the format (`.dot`, `.png`, `.svg`, ...). Needs Graphviz on the PATH for anything but `.dot` |
+| `-v`, `--vertical` | Lay the graph out top to bottom |
+| `-d`, `--dpi <dpi>` | Graph resolution (default 300) |
+
+`luthor.py` takes the same options: `python luthor.py mylexer.lex --unicode`.
+
+## Source Generator (Luthor.Generator)
+
+Luthor.Generator is a Roslyn incremental source generator. You declare the rules as attributes on a partial class, and the compiler generates the DFA tables and a `Tokenize` method for you. The tables are rebuilt only when the rules change, and nothing extra ships with your app beyond the generated code.
+
+### Installation
+
+```bash
+dotnet add package Luthor.Generator
+```
+The consuming project must target .NET 8 or later. The package is a development dependency: it runs at compile time and adds no runtime assembly to your output.
+
+### Defining a lexer
+
+Put `[Rule]` attributes on a `partial` class. Each rule has a name and a pattern; the name becomes a `public const int` symbol id on the class.
+
+```csharp
+using Luthor;
+
+namespace Example;
+
+[Rule("Directive",    @"^#[^\n]*")]
+[Rule("LineComment",  @"//[^\n]*")]
+[Rule("BlockComment", @"/\*(.|\n)*?\*/")]   // lazy: stops at the first */
+[Rule("If",           "if", true)]           // true = literal, no regex metacharacters
+[Rule("While",        "while", true)]
+[Rule("Ident",        @"[a-zA-Z_][a-zA-Z0-9_]*")]
+[Rule("Number",       @"[0-9]+(\.[0-9]+)?")]
+[Rule("Ws",           @"[ \t\r\n]+")]
+[Rule("Op",           @"[-+*/=<>!;,(){}]")]
+partial class Lexer { }
+```
+
+- Rules are numbered in the order they are declared (0, 1, 2, ...), and the same priority applies as in a lexer file: when two rules match the same longest text, the earlier one wins. List keywords before `Ident`.
+- Patterns use the same syntax as the command-line tool, including [character classes](#character-classes) such as `[[:digit:]]`, `[[:alpha:]_]` and `\p{Upper}`.
+- The attributes live in namespace `Luthor` and are generated into your project, so there is nothing else to reference.
+- Keep all the `[Rule]` attributes on one declaration of the class. If they are split across partial declarations, priority depends on file order.
+
+### Using it
+
+```csharp
+foreach (var (pos, sym, text) in Lexer.Tokenize("while (x < 10) x = x + 1;"))
+{
+    if (sym == Lexer.Ws) continue;
+    Console.WriteLine($"{pos}: {sym} '{text}'");
+}
+
+using var reader = File.OpenText("input.c");
+foreach (var token in Lexer.Tokenize(reader)) { /* ... */ }
+```
+
+Every `Tokenize` overload returns `IEnumerable<(long Position, int Symbol, string Text)>` and works lazily. The `TextReader` and `Stream` overloads buffer only the current token, so large inputs don't need to fit in memory.
+
+| Overload | Position is | Generated when |
+|---|---|---|
+| `Tokenize(string)` | char index | always |
+| `Tokenize(TextReader)` | char offset | always |
+| `Tokenize(byte[])` | byte offset | `Encoding` is set |
+| `Tokenize(Stream)` | byte offset | `Encoding` is set |
+
+### Options
+
+Add a `[Lexer]` attribute to change the defaults:
+
+```csharp
+[Lexer(Encoding = "UTF-8", ErrorRule = true, Unicode = true)]
+partial class Lexer { }
+```
+
+- **`Unicode`** (default `false`) switches the character classes to their Unicode definitions (see [Character classes](#character-classes)), the same as RE/flex's `%option unicode`. With it, `[[:alpha:]_][[:word:]]*` matches `café` and `Ωμέγα` as single identifiers.
+- **`ErrorRule`** (default `true`) adds the [error rule](#the-error-rule) as a constant named `ERROR`, after the last rule. Every unit of input then lands in some token. With `ErrorRule = false`, input no rule matches comes back one code unit at a time with symbol `-1`.
+- **`Encoding`** (default none) generates a second table built for that encoding, plus the `byte[]` and `Stream` overloads. These match directly on the encoded bytes without decoding them first, and skip a leading byte order mark. Accepted values:
+  - `UTF-8`
+  - `UTF-16`, `UTF-16LE` or `UTF-16BE`
+  - `UTF-32`, `UTF-32LE` or `UTF-32BE`
+  - any single-byte code page, by name or number (`latin1`, `windows-1252`, `437`, ...)
+
+  Multi-byte code pages such as Shift-JIS are not supported.
+
+The string and `TextReader` overloads always use a UTF-16 table, since .NET strings are UTF-16.
+
+### Seeing the generated code
+
+To write the generated files to disk, add this to the project file:
+
+```xml
+<PropertyGroup>
+  <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+</PropertyGroup>
+```
+
+They appear under `obj/<Configuration>/<TargetFramework>/generated/Luthor.Generator/`. In Visual Studio you can also find them under **Dependencies → Analyzers → Luthor.Generator**.
+
+There are two kinds of file:
+
+- `LuthorShared.g.cs` is generated once per project. It holds the attributes and the matching code that every lexer in the project shares.
+- `<Namespace>.<Class>.g.cs` is generated for each lexer. It holds the symbol constants, the DFA table(s) and the `Tokenize` methods.
+
+### Diagnostics
+
+Mistakes in the rules are reported as compiler errors and warnings on the attribute that caused them:
+
+| Id | Severity | Meaning |
+|---|---|---|
+| LUTH001 | Error | The class isn't `partial` |
+| LUTH002 | Error | A containing class isn't `partial` |
+| LUTH003 | Error | A rule's name or pattern isn't a non-null constant string |
+| LUTH004 | Error | Bad rule name: not a valid identifier, a duplicate, `ERROR` while the error rule is on, or a clash with the class name or a generated member |
+| LUTH005 | Error | The pattern doesn't parse |
+| LUTH006 | Warning | The rule can match the empty string (possibly only at `^` or `$`) |
+| LUTH007 | Error | Unsupported encoding |
+| LUTH008 | Error | Building the DFA failed for another reason |
+| LUTH009 | Warning | Rules are split across partial declarations |
 
 ## Lexer Input Format
 
@@ -92,8 +224,36 @@ if|while|for|int|void
 - Each expression on its own line
 - Comments: `#text` or `#` alone. 
 - Accept IDs assigned by line order (0, 1, 2, ...)
-- Supports POSIX character classes: [[:digit:]], [[:alpha:]], etc.
+- Supports POSIX character classes such as `[[:digit:]]` and `[[:alpha:]]`, and the equivalent `\p{Digit}` and `\p{Alpha}`; see [Character classes](#character-classes)
 - Lazy quantifiers: *?, +?, ??, {1,3}? (not quite POSIX due to DFA limitations)
+
+### Character classes
+
+Character classes follow RE/flex. There are 14 named classes. Each can be written inside a bracket list as `[[:name:]]`, or anywhere as `\p{Name}`:
+
+| Bracket form | Escape form | ASCII definition | Unicode definition |
+|---|---|---|---|
+| `[[:alnum:]]` | `\p{Alnum}` | `[0-9A-Za-z]` | `Ll`, `Lu`, `Nd` |
+| `[[:alpha:]]` | `\p{Alpha}` | `[A-Za-z]` | `Ll`, `Lu` |
+| `[[:ascii:]]` | `\p{ASCII}` | U+0000–U+007F | same |
+| `[[:blank:]]` | `\p{Blank}` | space and tab | same (ASCII) |
+| `[[:cntrl:]]` | `\p{Cntrl}` | U+0000–U+001F, U+007F | `Cc`, `Cf` |
+| `[[:digit:]]` | `\p{Digit}` | `[0-9]` | `Nd` |
+| `[[:graph:]]` | `\p{Graph}` | U+0021–U+007E | everything except `Cc`, `Cf`, `Z` and surrogates |
+| `[[:lower:]]` | `\p{Lower}` | `[a-z]` | `Ll` |
+| `[[:print:]]` | `\p{Print}` | U+0020–U+007E | everything except `Cc`, `Cf` and surrogates |
+| `[[:punct:]]` | `\p{Punct}` | ASCII punctuation | `P` |
+| `[[:space:]]` | `\p{Space}` | `[\t\n\v\f\r ]` | `Zs` plus `[\t\n\v\f\r]` |
+| `[[:upper:]]` | `\p{Upper}` | `[A-Z]` | `Lu` |
+| `[[:word:]]` | `\p{Word}` | `[0-9A-Za-z_]` | `L`, `Nd`, `Pc` |
+| `[[:xdigit:]]` | `\p{XDigit}` | `[0-9A-Fa-f]` | same (ASCII) |
+
+- **ASCII is the default.** The Unicode definitions apply in Unicode mode, as with RE/flex's `%option unicode`. Turn it on with `--unicode` on the command line (both `luthor` and `luthor.py`), `[Lexer(Unicode = true)]` in the source generator, or `unicode: true` in `Builder.Build`. Unicode mode also makes `\d`, `\w` and `\s` match `\p{Digit}`, `\p{Word}` and `\p{Space}`. The Unicode tables are generated from `UnicodeData.txt` by `tools/gen_unicode_classes.py`, into `UnicodeClasses.cs` for C# and (with `--python`) into the block at the end of `luthor.py`.
+- **Names in brackets:** the first letter can be either case, so `[[:alpha:]]` and `[[:Alpha:]]` are the same. `[[:ALPHA:]]` is an error.
+- **Names in `\p{...}`:** these must be written exactly as in the table, so `\p{Alpha}` works but `\p{alpha}` doesn't.
+- **Negation:** use `[[:^digit:]]`, `\P{Digit}`, `\p{^Digit}` or `[^[:digit:]]`.
+- **Combining:** classes can be mixed with other items in a bracket list, as in `[[:alpha:]_]` or `[\p{Upper}\p{Digit}]`.
+- **Outside brackets:** `[:alpha:]` on its own is an ordinary bracket list of the characters `:`, `a`, `l`, `p` and `h`, as in POSIX.
 
 ### Array Format
 

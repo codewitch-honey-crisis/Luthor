@@ -12,6 +12,7 @@
     <Compile Include="..\Luthor\Compiler.cs" Link="Compiler.cs" />
     <Compile Include="..\Luthor\FileParser.cs" Link="FileParser.cs" />
     <Compile Include="..\Luthor\Matcher.cs" Link="Matcher.cs" />
+    <Compile Include="..\Luthor\UnicodeClasses.cs" Link="UnicodeClasses.cs" />
   </ItemGroup>
 
   <ItemGroup>

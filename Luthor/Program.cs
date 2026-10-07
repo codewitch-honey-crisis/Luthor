@@ -4,82 +4,30 @@ namespace Luthor;
 
 static class Program
 {
-    static void PrintUsage()
-    {
-        Console.Error.WriteLine("Usage: Luthor <rules-file|pattern> [encoding] [--noerror] [--graph <path> [--vertical]]");
-        Console.Error.WriteLine("  rules-file: text file containing regex rules, one per line, in the format 'name = pattern' or '# comment' at the start of each line");
-        Console.Error.WriteLine("  pattern: a single pattern to match");
-        Console.Error.WriteLine("  encoding: character encoding to use (e.g., UTF-8, UTF-16). default is UTF-8");
-        Console.Error.WriteLine("  noerror: do not generate the error rule");
-        Console.Error.WriteLine("  graph: path to save the generated graph (dot,jpg,png,svg)");
-        Console.Error.WriteLine("  --vertical: lay the graph out top to bottom instead of left to right");
-    }
+  
     static void Main(string[] args)
     {
         try
         {
             Console.OutputEncoding = Encoding.UTF8;
-            if (args.Length < 1)
-            {
-                throw new ArgumentException("The rules file or a pattern is required.");
-            }
-            var arg0 = args[0];
-            if (arg0 == "-?" || arg0.ToLowerInvariant() == "--help")
-            {
-                PrintUsage();
-                return;
-            }
 
-            // options after the rules file or pattern, in any order:
-            // [encoding] [--noerror] [--graph <path> [--vertical]]
-            string? enc = null;
-            var noerror = false;
-            string? graphPath = null;
-            var vertical = false;
-            for (var i = 1; i < args.Length; i++)
-            {
-                var arg = args[i];
-                if (arg == "-n" || arg == "--noerror")
+            if(!Options.TryCreate(args, out var options, out var error))
+{
+                if (!error!.IsHelpRequest)
                 {
-                    noerror = true;
+                    Console.Error.WriteLine("Error: " + error.Message);
+                    Console.Error.WriteLine();
                 }
-                else if (arg == "-g" || arg == "--graph")
-                {
-                    if (graphPath != null)
-                    {
-                        throw new ArgumentException("--graph was specified more than once.");
-                    }
-                    if (i + 1 >= args.Length || args[i + 1].StartsWith("-"))
-                    {
-                        throw new ArgumentException("--graph requires an output path.");
-                    }
-                    graphPath = args[++i];
-                }
-                else if (arg == "-v" || arg == "--vertical")
-                {
-                    vertical = true;
-                }
-                else if (enc == null && !arg.StartsWith("-"))
-                {
-                    enc = arg.ToUpperInvariant();
-                }
-                else
-                {
-                    throw new ArgumentException($"Unexpected argument '{arg}'.");
-                }
-            }
-            enc ??= "UTF-8";
-            if (vertical && graphPath == null)
-            {
-                throw new ArgumentException("--vertical requires --graph.");
+                Options.PrintUsage();
+                if (error!.IsHelpRequest) return;
             }
 
             var isPattern = false;
-            if (arg0.IndexOfAny(Path.GetInvalidPathChars()) > -1)
+            if (options.RulesFileOrPattern!.IndexOfAny(Path.GetInvalidPathChars()) > -1)
             {
                 isPattern = true;
             }
-            else if (!File.Exists(arg0))
+            else if (!File.Exists(options.RulesFileOrPattern))
             {
                 isPattern = true;
             }
@@ -89,7 +37,7 @@ static class Program
             var patterns = new List<string>();
             if (!isPattern)
             {
-                using var reader = new StreamReader(args[0], true);
+                using var reader = new StreamReader(options.RulesFileOrPattern, true);
                 foreach (var pattern in FileParser.ReadFrom(reader))
                 {
                     patterns.Add(pattern);
@@ -97,24 +45,28 @@ static class Program
             }
             else
             {
-                patterns.Add(arg0);
+                patterns.Add(options.RulesFileOrPattern);
             }
             if (!isPattern)
             {
                 Console.Error.WriteLine($"There are {patterns.Count} patterns.");
             }
-            var dfa = Builder.Build(patterns, !noerror);
-            if (noerror)
+            var dfa = Builder.Build(patterns, !options.NoError,options.Unicode);
+            if (options.NoError)
             {
                 Console.Error.WriteLine("The error rule was not generated.");
             }
-            Console.Error.WriteLine($"{dfa.States.Count} states were built.");
-            if (graphPath != null)
+            if (options.Unicode)
             {
-                Graph.RenderToFile(dfa, graphPath, new GraphOptions { Dpi = 600, Vertical = vertical });
-                Console.Error.WriteLine($"The graph was written to {graphPath}.");
+                Console.Error.WriteLine("Unicode character groups are in use.");
             }
-            var array = Compiler.Compile(dfa, enc);
+            Console.Error.WriteLine($"{dfa.States.Count} states were built.");
+            if (options.Graph != null)
+            {
+                Graph.RenderToFile(dfa, options.Graph, new GraphOptions { Dpi = options.Dpi, Vertical = options.Vertical});
+                Console.Error.WriteLine($"The graph was written to {options.Graph}.");
+            }
+            var array = Compiler.Compile(dfa, options!.Encoding==null?"UTF-8":options!.Encoding!.WebName!);
             Console.Error.WriteLine($"The array has {array.Length} elements.");
             int width = 8;
             for (var i = 0; i < array.Length; i++)
@@ -144,12 +96,6 @@ static class Program
             }
             Console.WriteLine();
 
-        }
-        catch (ArgumentException ex)
-        {
-            Console.Error.WriteLine($"Error: {ex.Message}");
-            Console.Error.WriteLine();
-            PrintUsage();
         }
         catch (Exception ex)
         {

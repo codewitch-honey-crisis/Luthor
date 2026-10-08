@@ -13,7 +13,7 @@ namespace Example;
 [Rule("Ident", @"[a-zA-Z_][a-zA-Z0-9_]*")]
 [Rule("Number", @"[0-9]+(\.[0-9]+)?")]
 [Rule("String", @"""([^""\\\n]|\\.)*""")]
-[Rule("Ws", @"[ \t\r\n]+")]
+[Rule("Ws", @"\p{Space}+")]
 [Rule("Op", @"[-+*/=<>!;,(){}]")]
 [Lexer(Unicode=true)]
 [LexerStream(Encoding="UTF-8")]

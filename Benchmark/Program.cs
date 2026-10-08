@@ -23,7 +23,7 @@ public class LuthorBenchmark
 # string
 ""(\\.|[^""\\\n])*?""
 # whitespace
-[ \t\r\n]+
+\p{Space}+
 # operator
 [-+*/=;#]
 ";

@@ -319,7 +319,7 @@ Character classes follow RE/flex. There are 14 named classes. Each can be writte
 | `[[:word:]]` | `\p{Word}` | `[0-9A-Za-z_]` | `L`, `Nd`, `Pc` |
 | `[[:xdigit:]]` | `\p{XDigit}` | `[0-9A-Fa-f]` | same (ASCII) |
 
-- **ASCII is the default.** The Unicode definitions apply in Unicode mode, as with RE/flex's `%option unicode`. Turn it on with `--unicode` on the command line (both `luthor` and `luthor.py`), `[Lexer(Unicode = true)]` in the source generator, or `unicode: true` in `Builder.Build`. Unicode mode also makes `\d`, `\w` and `\s` match `\p{Digit}`, `\p{Word}` and `\p{Space}`. The Unicode tables are generated from `UnicodeData.txt` by `tools/gen_unicode_classes.py`, into `UnicodeClasses.cs` for C# and (with `--python`) into the block at the end of `luthor.py`.
+- **ASCII is the default.** The Unicode definitions apply in Unicode mode, as with RE/flex's `%option unicode`. Turn it on with `--unicode` on the command line (both `luthor` and `luthor.py`), `[Lexer(Unicode = true)]` in the source generator, or `unicode: true` in `Builder.Build`. Unicode mode also makes `\d`, `\w` and `\s` match `\p{Digit}`, `\p{Word}` and `\p{Space}`.
 - **Names in brackets:** the first letter can be either case, so `[[:alpha:]]` and `[[:Alpha:]]` are the same. `[[:ALPHA:]]` is an error.
 - **Names in `\p{...}`:** these must be written exactly as in the table, so `\p{Alpha}` works but `\p{alpha}` doesn't.
 - **Negation:** use `[[:^digit:]]`, `\P{Digit}`, `\p{^Digit}` or `[^[:digit:]]`.

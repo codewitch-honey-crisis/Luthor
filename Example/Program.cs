@@ -22,7 +22,7 @@ foreach (var (pos, sym, text) in Lexer.Tokenize(source))
 // The byte overloads run a second DFA directly over UTF-8, so positions are byte offsets.
 Console.WriteLine("-- Tokenize(Stream), UTF-8 with BOM");
 using var stream = new MemoryStream(Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(source)).ToArray());
-foreach (var (pos, sym, text) in Lexer.Tokenize(stream))
+foreach (var (pos, sym, text) in Lexer.TokenizeUtf8(stream))
     if (sym != Lexer.Ws && pos >= 90) Console.WriteLine($"{pos,4} {Name(sym),-12} {Show(text)}");
 
 static string Show(string s) => s.Replace("\n", "\\n");

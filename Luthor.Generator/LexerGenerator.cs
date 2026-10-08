@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
+
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -21,6 +22,7 @@ public sealed class LexerGenerator : IIncrementalGenerator
 {
     internal const string RuleAttributeName = "Luthor.RuleAttribute";
     internal const string LexerAttributeName = "Luthor.LexerAttribute";
+    internal const string LexerStreamAttributeName = "Luthor.LexerStreamAttribute";
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -108,22 +110,35 @@ internal static class ModelReader
         }
 
         bool errorRule = true;
-        string? encoding = null;
         bool unicode = false;
-        LocationInfo? encodingLocation = null;
         var lexerAttr = all.FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == LexerGenerator.LexerAttributeName);
         if (lexerAttr is not null)
         {
             foreach (var kv in lexerAttr.NamedArguments)
             {
                 if (kv.Key == "ErrorRule" && kv.Value.Value is bool b) errorRule = b;
-                else if (kv.Key == "Encoding" && kv.Value.Value is string s && s.Length > 0) encoding = s;
-                else if (kv.Key == "Unicode" && kv.Value.Value is bool bb) unicode = bb;
+                else if (kv.Key == "Unicode" && kv.Value.Value is bool u) unicode = u;
             }
-            var attrSyntax = lexerAttr.ApplicationSyntaxReference?.GetSyntax(ct) as AttributeSyntax;
-            encodingLocation = LocationInfo.From(
-                (SyntaxNode?)attrSyntax?.ArgumentList?.Arguments.FirstOrDefault(a => a.NameEquals?.Name.Identifier.ValueText == "Encoding")
-                ?? attrSyntax);
+        }
+
+        // [LexerStream(Encoding = ...)], any number, on any partial declaration. Duplicates are
+        // detected later, in the emitter, where encodings are resolved to a canonical identity.
+        var streams = new List<StreamModel>();
+        foreach (var attr in all.Where(a => a.AttributeClass?.ToDisplayString() == LexerGenerator.LexerStreamAttributeName))
+        {
+            ct.ThrowIfCancellationRequested();
+            var syntax = attr.ApplicationSyntaxReference?.GetSyntax(ct) as AttributeSyntax;
+            var encodingArg = syntax?.ArgumentList?.Arguments.FirstOrDefault(a => a.NameEquals?.Name.Identifier.ValueText == "Encoding");
+            var location = LocationInfo.From((SyntaxNode?)encodingArg ?? syntax);
+
+            string? encoding = null;
+            foreach (var kv in attr.NamedArguments)
+                if (kv.Key == "Encoding" && kv.Value.Value is string s) encoding = s.Trim();
+
+            if (string.IsNullOrEmpty(encoding))
+                diags.Add(DiagnosticInfo.Create(Diagnostics.MissingEncoding, location));
+            else
+                streams.Add(new StreamModel(encoding!, location));
         }
 
         string? ns = type.ContainingNamespace.IsGlobalNamespace ? null : type.ContainingNamespace.ToDisplayString(NamespaceFormat);
@@ -134,9 +149,8 @@ internal static class ModelReader
             HintName(type),
             new EquatableArray<RuleModel>(rules),
             errorRule,
-            encoding,
             unicode,
-            encodingLocation,
+            new EquatableArray<StreamModel>(streams),
             typeLocation,
             new EquatableArray<DiagnosticInfo>(diags));
     }

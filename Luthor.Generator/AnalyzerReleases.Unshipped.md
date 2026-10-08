@@ -14,3 +14,5 @@ LUTH006 | Luthor | Warning | Rule can match the empty string
 LUTH007 | Luthor | Error | Unsupported encoding
 LUTH008 | Luthor | Error | DFA construction failed
 LUTH009 | Luthor | Warning | Rules split across partial declarations
+LUTH010 | Luthor | Error | Duplicate stream encoding
+LUTH011 | Luthor | Error | Missing stream encoding

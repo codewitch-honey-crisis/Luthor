@@ -1385,17 +1385,19 @@ class _OutputWriter:
             self._raw.flush()
 
 
-def _dump_array(array, w):
-    """Same output as DumpArray in Program.cs."""
+def _dump_array(array, indent, w):
+    """Same output as DumpArray in Program.cs: 16 values per line, no leading or trailing line
+    break, and every line after the first indented by indent spaces."""
+    spaces = " " * indent
     out = []
     last = len(array) - 1
     for i, n in enumerate(array):
-        if i % 16 == 0:
+        if i > 0 and i % 16 == 0:
             out.append(os.linesep)
+            out.append(spaces)
         out.append(str(n))
         if i < last:
             out.append(", ")
-    out.append(os.linesep)
     w.write("".join(out))
 
 
@@ -1412,14 +1414,18 @@ def _file_name_without_extension(path):
 
 
 def _write_templated(template, array, width, name, w):
-    """Mirrors the %TABLE% loop in Program.cs, including searching again from i + 1."""
+    """Mirrors the %TABLE% loop in Program.cs, including searching again from i + 1.
+    The table is indented to the column %TABLE% starts at (the number of characters between it
+    and the preceding '\\n'; 0 when it is on the first line)."""
     data = template
     oi = 0
     i = data.find("%TABLE%", 0)
     while i > -1:
+        j = data.rfind("\n", 0, i)
+        indent = i - j - 1 if j >= 0 else 0
         if i > oi:
             w.write(_replace_template_args(data[oi:i], width, name))
-        _dump_array(array, w)
+        _dump_array(array, indent, w)
         oi = i + 7
         i = data.find("%TABLE%", i + 1)
     w.write(_replace_template_args(data[oi:], width, name))
@@ -1476,7 +1482,8 @@ def main(argv):
             if opts.template is not None:
                 _write_templated(opts.template, array, width, name, w)
             else:
-                _dump_array(array, w)
+                print(file=sys.stderr)
+                _dump_array(array, 0, w)
         finally:
             w.close()
     except ValueError as ex:  # bad arguments (like C#'s ArgumentException): show the usage

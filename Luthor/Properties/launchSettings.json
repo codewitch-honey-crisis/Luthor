@@ -6,7 +6,7 @@
     },
     "Identifier": {
       "commandName": "Project",
-      "commandLineArgs": "[A-Z_a-z][A-Z_a-z0-9]* --no-error"
+      "commandLineArgs": "[A-Z_a-z][A-Z_a-z0-9]* --no-error --unicode"
     },
     "ExampleC.lex": {
       "commandName": "Project",

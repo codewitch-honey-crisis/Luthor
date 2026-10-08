@@ -4,13 +4,15 @@ namespace Luthor;
 
 static class Program
 {
-    static void DumpArray(int[] array, TextWriter writer)
+    static void DumpArray(int[] array, int indent, TextWriter writer)
     {
+        var spaces = new string(' ', indent);
         for (var i = 0; i < array.Length; i++)
         {
-            if (i % 16 == 0)
+            if (i>0 && (i % 16 == 0))
             {
                 writer.WriteLine();
+                writer.Write(spaces);
             }
             writer.Write(array[i]);
             if (i < array.Length - 1)
@@ -18,7 +20,6 @@ static class Program
                 writer.Write(", ");
             }
         }
-        writer.WriteLine();
     }   
     static string ReplaceTemplateArgs(string data, int width, string name)
     {
@@ -110,13 +111,24 @@ static class Program
                 var data = options.Template.ReadToEnd();
                 var oi = 0;
                 int i = data.IndexOf("%TABLE%",0);
+                int indent;
                 while(i>-1)
                 {
+                    indent = 0;
+                    for (var j=i-1;j>=0;--j)
+                    {
+                        if(data[j]=='\n')
+                        {
+                            indent = i - j - 1;
+                            if(indent<0) indent = 0;
+                            break;
+                        }
+                    }
                     if(i>oi)
                     {
                         options.Output.Write(ReplaceTemplateArgs(data.Substring(oi, i - oi),width,!isPattern?Path.GetFileNameWithoutExtension(options.RulesFileOrPattern):"expression"));
                     }
-                    DumpArray(array, options.Output);
+                    DumpArray(array, indent,options.Output);
                     oi = i+7;
                     i = data.IndexOf("%TABLE%", i + 1);
                 }
@@ -127,7 +139,8 @@ static class Program
             }
             else
             {
-                DumpArray(array, options.Output);
+                Console.Error.WriteLine();
+                DumpArray(array, 0,options.Output);
             }
             
 

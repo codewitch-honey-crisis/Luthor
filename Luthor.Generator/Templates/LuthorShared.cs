@@ -44,17 +44,26 @@ namespace Luthor
         public bool ErrorRule { get; set; } = true;
 
         /// <summary>
-        /// When set, also generate <c>Tokenize(byte[])</c> and <c>Tokenize(Stream)</c> overloads
-        /// that run a second DFA directly over bytes in this encoding: "UTF-8", "UTF-16" /
-        /// "UTF-16LE" / "UTF-16BE", "UTF-32" / "UTF-32LE" / "UTF-32BE", or any single-byte code
-        /// page by name or number ("latin1", "windows-1252", "437", ...).
-        /// </summary>
-        public string? Encoding { get; set; }
-
-        /// <summary>
         /// When set, also supports unicode characters in character classes, e.g. <c>[[:L:]]</c> for letters, <c>[[:Lu:]]</c> for uppercase letters, etc.
         /// </summary>
         public bool Unicode { get; set; } = false;
+    }
+
+    /// <summary>
+    /// Generates <c>Tokenize{Encoding}(byte[])</c> and <c>Tokenize{Encoding}(Stream)</c> overloads
+    /// that match directly on bytes in <see cref="Encoding"/>, without decoding them first. Repeat
+    /// the attribute for each encoding; the method name ends with the encoding name, e.g.
+    /// <c>TokenizeUtf8</c>, <c>TokenizeUtf16BE</c>, <c>TokenizeWindows1252</c>.
+    /// </summary>
+    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, AllowMultiple = true, Inherited = false)]
+    internal sealed class LexerStreamAttribute : Attribute
+    {
+        /// <summary>
+        /// "UTF-8", "UTF-16" / "UTF-16LE" / "UTF-16BE", "UTF-32" / "UTF-32LE" / "UTF-32BE", or any
+        /// single-byte code page by name or number ("latin1", "windows-1252", "437", ...).
+        /// Declaring the same encoding twice, under any of its names, is a compile error.
+        /// </summary>
+        public string? Encoding { get; set; }
     }
 
     /// <summary>Input encoding for the byte-level tokenizers: how code units are laid out in bytes.</summary>

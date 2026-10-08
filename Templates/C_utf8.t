@@ -5,7 +5,7 @@
 static int %NAME%_match(const unsigned char* s, size_t n, int at_line_start, size_t* len)
 {
     static const int%WIDTH%_t dfa[] = {
-%TABLE%
+        %TABLE%
     };
     int state = 1, accept = -1, bol = at_line_start;
     size_t i = 0;

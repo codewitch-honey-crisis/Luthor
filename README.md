@@ -162,29 +162,62 @@ Every `Tokenize` overload returns `IEnumerable<(long Position, int Symbol, strin
 |---|---|---|
 | `Tokenize(string)` | char index | always |
 | `Tokenize(TextReader)` | char offset | always |
-| `Tokenize(byte[])` | byte offset | `Encoding` is set |
-| `Tokenize(Stream)` | byte offset | `Encoding` is set |
+| `Tokenize{Encoding}(byte[])` | byte offset | once per [`[LexerStream]`](#byte-and-stream-tokenizers) |
+| `Tokenize{Encoding}(Stream)` | byte offset | once per [`[LexerStream]`](#byte-and-stream-tokenizers) |
 
 ### Options
 
 Add a `[Lexer]` attribute to change the defaults:
 
 ```csharp
-[Lexer(Encoding = "UTF-8", ErrorRule = true, Unicode = true)]
+[Lexer(ErrorRule = true, Unicode = true)]
 partial class Lexer { }
 ```
 
 - **`Unicode`** (default `false`) switches the character classes to their Unicode definitions (see [Character classes](#character-classes)), the same as RE/flex's `%option unicode`. With it, `[[:alpha:]_][[:word:]]*` matches `café` and `Ωμέγα` as single identifiers.
 - **`ErrorRule`** (default `true`) adds the [error rule](#the-error-rule) as a constant named `ERROR`, after the last rule. Every unit of input then lands in some token. With `ErrorRule = false`, input no rule matches comes back one code unit at a time with symbol `-1`.
-- **`Encoding`** (default none) generates a second table built for that encoding, plus the `byte[]` and `Stream` overloads. These match directly on the encoded bytes without decoding them first, and skip a leading byte order mark. Accepted values:
-  - `UTF-8`
-  - `UTF-16`, `UTF-16LE` or `UTF-16BE`
-  - `UTF-32`, `UTF-32LE` or `UTF-32BE`
-  - any single-byte code page, by name or number (`latin1`, `windows-1252`, `437`, ...)
-
-  Multi-byte code pages such as Shift-JIS are not supported.
 
 The string and `TextReader` overloads always use a UTF-16 table, since .NET strings are UTF-16.
+
+### Byte and stream tokenizers
+
+To tokenize encoded bytes directly, add a `[LexerStream]` attribute for each encoding you need:
+
+```csharp
+[LexerStream(Encoding = "UTF-8")]
+[LexerStream(Encoding = "UTF-16BE")]
+[LexerStream(Encoding = "windows-1252")]
+partial class Lexer { }
+
+foreach (var token in Lexer.TokenizeUtf8(File.ReadAllBytes("input.c"))) { /* ... */ }
+using var stream = File.OpenRead("legacy.txt");
+foreach (var token in Lexer.TokenizeWindows1252(stream)) { /* ... */ }
+```
+
+Each one generates a `byte[]` and a `Stream` overload. These match directly on the encoded bytes without decoding them first, and skip a leading byte order mark. Accepted encodings:
+
+- `UTF-8`
+- `UTF-16`, `UTF-16LE` or `UTF-16BE` (`Unicode` is the same as `UTF-16LE`)
+- `UTF-32`, `UTF-32LE` or `UTF-32BE`
+- any single-byte code page, by name or number (`latin1`, `windows-1252`, `437`, ...)
+
+Multi-byte code pages such as Shift-JIS are not supported.
+
+**Method names.** The encoding name, as you wrote it, goes on the end of `Tokenize`:
+
+| `Encoding` | Methods |
+|---|---|
+| `UTF-8` | `TokenizeUtf8` |
+| `UTF-16` | `TokenizeUtf16` |
+| `UTF-16BE` | `TokenizeUtf16BE` |
+| `UTF-32LE` | `TokenizeUtf32LE` |
+| `windows-1252` | `TokenizeWindows1252` |
+| `iso-8859-1` | `TokenizeIso8859_1` |
+| `437` | `TokenizeCp437` |
+
+**One per encoding.** Declaring the same encoding twice is an error (LUTH010), even under different names. `UTF-16` and `UTF-16LE` are the same encoding, and so are `latin1`, `iso-8859-1` and `28591`.
+
+**Shared tables.** A lexer never carries two identical tables. UTF-16LE and UTF-16BE both use the UTF-16 table that `Tokenize(string)` already has; only the byte order differs, and that is handled when reading the input. Other encodings get their own table, unless it comes out identical to one already generated. That always happens for UTF-32LE and UTF-32BE. It can also happen for two code pages that agree on every character your rules can match.
 
 ### Seeing the generated code
 
@@ -215,9 +248,11 @@ Mistakes in the rules are reported as compiler errors and warnings on the attrib
 | LUTH004 | Error | Bad rule name: not a valid identifier, a duplicate, `ERROR` while the error rule is on, or a clash with the class name or a generated member |
 | LUTH005 | Error | The pattern doesn't parse |
 | LUTH006 | Warning | The rule can match the empty string (possibly only at `^` or `$`) |
-| LUTH007 | Error | Unsupported encoding |
+| LUTH007 | Error | A `[LexerStream]` encoding isn't supported |
 | LUTH008 | Error | Building the DFA failed for another reason |
 | LUTH009 | Warning | Rules are split across partial declarations |
+| LUTH010 | Error | Two `[LexerStream]` attributes name the same encoding, or would generate the same method name |
+| LUTH011 | Error | A `[LexerStream]` has no `Encoding`, or it isn't a non-empty constant string |
 
 ## Lexer Input Format
 

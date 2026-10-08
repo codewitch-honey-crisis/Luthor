@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 
@@ -67,6 +68,9 @@ internal sealed record TypeDecl(string Keyword, string Name, string TypeParamete
 
 internal sealed record RuleModel(string Name, string Pattern, bool IsLiteral, LocationInfo? NameLocation, LocationInfo? PatternLocation);
 
+/// <summary>One <c>[LexerStream]</c> attribute: an encoding to generate byte-level tokenizers for.</summary>
+internal sealed record StreamModel(string Encoding, LocationInfo? Location);
+
 internal sealed record LexerModel(
     string? Namespace,
     EquatableArray<TypeDecl> Containers,      // outermost first
@@ -74,8 +78,7 @@ internal sealed record LexerModel(
     string HintName,
     EquatableArray<RuleModel> Rules,
     bool ErrorRule,
-    string? Encoding,
     bool Unicode,
-    LocationInfo? EncodingLocation,
+    EquatableArray<StreamModel> Streams,      // declaration order
     LocationInfo? TypeLocation,
     EquatableArray<DiagnosticInfo> Diagnostics); // found while reading the syntax; if any are errors, nothing is emitted

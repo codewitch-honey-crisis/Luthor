@@ -42,4 +42,12 @@ internal static class Diagnostics
         "LUTH009", "Rules split across partial declarations",
         "'{0}' has [Rule] attributes on more than one partial declaration; rule priority then depends on file order. Put all rules on one declaration.",
         Category, DiagnosticSeverity.Warning, true);
+
+    public static readonly DiagnosticDescriptor DuplicateEncoding = new(
+        "LUTH010", "Duplicate stream encoding",
+        "[LexerStream] encoding '{0}' {1}", Category, DiagnosticSeverity.Error, true);
+
+    public static readonly DiagnosticDescriptor MissingEncoding = new(
+        "LUTH011", "Missing stream encoding",
+        "[LexerStream] needs Encoding set to a non-empty constant string", Category, DiagnosticSeverity.Error, true);
 }

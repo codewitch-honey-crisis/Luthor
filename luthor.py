@@ -6,7 +6,8 @@ Graph.cs). It produces the same arrays and the same Graphviz output as the C# ve
 Single-byte code pages use Python codec names (cp1252, cp037, iso8859-15, ...), so their byte
 mappings follow Python's tables. Rendering a graph to an image needs Graphviz's dot on the PATH.
 
-Usage: luthor.py <rules-file|pattern> [-e <encoding>] [-n] [-u] [-g <graph-file>] [-v] [-d <dpi>]
+Usage: luthor.py <rules-file|pattern> [-e <encoding>] [-n] [-u] [-o <output-file>] [-t <template-file>]
+                 [-g <graph-file>] [-v] [-d <dpi>]
 (run with --help for details)
 """
 
@@ -1240,17 +1241,19 @@ _USAGE = """luthor v{version}
 
 A DFA lexer generator tool
 
-Usage: luthor.py <rules-file|pattern> [--encoding <encoding>] [--no-error] [--unicode] [--graph <graph-file>] [--vertical]
-        [--dpi <dpi>]
+Usage: luthor.py <rules-file|pattern> [--encoding <encoding>] [--no-error] [--unicode] [--output <output-file>]
+        [--template <template-file>] [--graph <graph-file>] [--vertical] [--dpi <dpi>]
 
-    <rules-file|pattern>       text file containing regex rules, one per line, in the format 'name = pattern' or '#
-                               comment' at the start of each line, or a single pattern to match
-    -e, --encoding <encoding>  the encoding to use. Defaults to UTF-8.
-    -n, --no-error             do not generate the error rule
-    -u, --unicode              use Unicode character groups
-    -g, --graph <graph-file>   generate a DFA graph (requires GraphViz in your PATH)
-    -v, --vertical             use vertical DFA graphs
-    -d, --dpi <dpi>            use the indicated DPI for graphs. Defaults to 300.
+    <rules-file|pattern>            text file containing regex rules, one per line, in the format 'name = pattern' or
+                                    '# comment' at the start of each line, or a single pattern to match
+    -e, --encoding <encoding>       the encoding to use. Defaults to UTF-8.
+    -n, --no-error                  do not generate the error rule
+    -u, --unicode                   use Unicode character groups
+    -o, --output <output-file>      Emit the output to the specified file
+    -t, --template <template-file>  Emit the output using the specified template file
+    -g, --graph <graph-file>        generate a DFA graph (requires GraphViz in your PATH)
+    -v, --vertical                  use vertical DFA graphs
+    -d, --dpi <dpi>                 use the indicated DPI for graphs. Defaults to 300.
 """
 
 
@@ -1268,6 +1271,8 @@ class _Options:
         self.encoding = "UTF-8"
         self.no_error = False
         self.unicode = False
+        self.output = None    # output file path; None = stdout
+        self.template = None  # template text (already read); None = no template
         self.graph = None
         self.vertical = False
         self.dpi = 300
@@ -1281,7 +1286,8 @@ def _parse_options(argv):
     flags = {"-n": "no_error", "--no-error": "no_error", "-u": "unicode", "--unicode": "unicode",
              "-v": "vertical", "--vertical": "vertical"}
     valued = {"-e": "encoding", "--encoding": "encoding", "-g": "graph", "--graph": "graph",
-              "-d": "dpi", "--dpi": "dpi"}
+              "-d": "dpi", "--dpi": "dpi", "-o": "output", "--output": "output",
+              "-t": "template", "--template": "template"}
     seen = set()
     i = 1
     while i < len(argv):
@@ -1307,6 +1313,12 @@ def _parse_options(argv):
                 if not value.isdigit() or int(value) <= 0:
                     raise _UsageError(f"--dpi must be a positive whole number, not '{value}'.")
                 value = int(value)
+            elif attr == "template":
+                # read as text up front (like the C# TextReader option), whatever its encoding
+                try:
+                    value = _read_text(value)
+                except OSError as ex:
+                    raise _UsageError(f"Unable to read template file '{value}': {ex.strerror}") from None
             setattr(opts, attr, value)
         else:
             raise _UsageError(f"Unexpected argument '{arg}'.")
@@ -1339,6 +1351,79 @@ def fsm_escape(literal: str) -> str:
         else:
             out.append(c)
     return ''.join(out)
+
+class _OutputWriter:
+    """Text writer for the generated output, in the console's encoding (like the C# Console.Out /
+    output-file TextWriter). It does no newline translation: template text is written exactly as
+    read, and generated line breaks are os.linesep, which is what writing "\n" to stdout does."""
+
+    def __init__(self, path):
+        self.encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+        self._text = None
+        self._owned = path is not None
+        if path is not None:
+            self._raw = open(path, "wb")
+        else:
+            self._raw = getattr(sys.stdout, "buffer", None)
+            if self._raw is None:  # stdout replaced by a text-only stream
+                self._text = sys.stdout
+            else:
+                sys.stdout.flush()
+
+    def write(self, s):
+        if self._text is not None:
+            self._text.write(s)
+        else:
+            self._raw.write(s.encode(self.encoding, errors="replace"))
+
+    def close(self):
+        if self._text is not None:
+            self._text.flush()
+        elif self._owned:
+            self._raw.close()
+        else:
+            self._raw.flush()
+
+
+def _dump_array(array, w):
+    """Same output as DumpArray in Program.cs."""
+    out = []
+    last = len(array) - 1
+    for i, n in enumerate(array):
+        if i % 16 == 0:
+            out.append(os.linesep)
+        out.append(str(n))
+        if i < last:
+            out.append(", ")
+    out.append(os.linesep)
+    w.write("".join(out))
+
+
+def _replace_template_args(data, width, name):
+    data = data.replace("%WIDTH%", str(width))
+    return data.replace("%NAME%", name)
+
+
+def _file_name_without_extension(path):
+    """Like Path.GetFileNameWithoutExtension: everything after the last dot goes, so ".rules" gives ""."""
+    base = os.path.basename(path)
+    dot = base.rfind(".")
+    return base[:dot] if dot >= 0 else base
+
+
+def _write_templated(template, array, width, name, w):
+    """Mirrors the %TABLE% loop in Program.cs, including searching again from i + 1."""
+    data = template
+    oi = 0
+    i = data.find("%TABLE%", 0)
+    while i > -1:
+        if i > oi:
+            w.write(_replace_template_args(data[oi:i], width, name))
+        _dump_array(array, w)
+        oi = i + 7
+        i = data.find("%TABLE%", i + 1)
+    w.write(_replace_template_args(data[oi:], width, name))
+
 
 def main(argv):
     try:
@@ -1385,16 +1470,15 @@ def main(argv):
             if width == 16 and n > 32767:
                 width = 32
         print(f"The array element width is {width} bits.", file=sys.stderr)
-        out = []
-        last = len(array) - 1
-        for i, n in enumerate(array):
-            if i % 16 == 0:
-                out.append("\n")
-            out.append(str(n))
-            if i < last:
-                out.append(", ")
-        out.append("\n")
-        sys.stdout.write("".join(out))
+        name = "expression" if is_pattern else _file_name_without_extension(arg0)
+        w = _OutputWriter(opts.output)
+        try:
+            if opts.template is not None:
+                _write_templated(opts.template, array, width, name, w)
+            else:
+                _dump_array(array, w)
+        finally:
+            w.close()
     except ValueError as ex:  # bad arguments (like C#'s ArgumentException): show the usage
         print(f"Error: {ex}", file=sys.stderr)
         print(file=sys.stderr)

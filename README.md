@@ -56,7 +56,8 @@ luthor mylexer.lex
 ### Options
 
 ```
-luthor <rules-file|pattern> [--encoding <encoding>] [--no-error] [--unicode] [--graph <graph-file>] [--vertical] [--dpi <dpi>]
+luthor <rules-file|pattern> [--encoding <encoding>] [--no-error] [--unicode] [--output <output-file>]
+       [--template <template-file>] [--graph <graph-file>] [--vertical] [--dpi <dpi>]
 ```
 
 | Option | Meaning |
@@ -64,11 +65,46 @@ luthor <rules-file|pattern> [--encoding <encoding>] [--no-error] [--unicode] [--
 | `-e`, `--encoding <encoding>` | Encoding of the generated table (default UTF-8) |
 | `-n`, `--no-error` | Do not generate the [error rule](#the-error-rule) |
 | `-u`, `--unicode` | Use Unicode definitions for [character classes](#character-classes) |
+| `-o`, `--output <output-file>` | Write the output to a file instead of the console |
+| `-t`, `--template <template-file>` | Wrap the table in a [template](#templates) |
 | `-g`, `--graph <graph-file>` | Also write a DFA graph; the extension picks the format (`.dot`, `.png`, `.svg`, ...). Needs Graphviz on the PATH for anything but `.dot` |
 | `-v`, `--vertical` | Lay the graph out top to bottom |
 | `-d`, `--dpi <dpi>` | Graph resolution (default 300) |
 
 `luthor.py` takes the same options: `python luthor.py mylexer.lex --unicode`.
+
+The table is written as comma-separated integers, 16 to a line. Progress messages go to stderr, so only the table (or the filled-in template) reaches stdout or the output file. Output is UTF-8.
+
+### Templates
+
+A template is a text file that turns the bare table into ready-to-compile source. Luthor copies it to the output, replacing these placeholders:
+
+| Placeholder | Replaced with |
+|---|---|
+| `%TABLE%` | The table, as comma-separated integers |
+| `%NAME%` | The rules file name without its extension (`mylexer` for `mylexer.lex`), or `expression` for a single pattern |
+| `%WIDTH%` | `8`, `16` or `32`: the smallest signed integer width that holds every element of the table |
+
+For example, this template, saved as `c.tpl`:
+
+```c
+#include <stdint.h>
+
+/* generated from %NAME% */
+static const int%WIDTH%_t %NAME%_dfa[] = {%TABLE%};
+```
+
+With `luthor ident.lex -n -t c.tpl -o ident.h`, where `ident.lex` holds the single rule `[A-Za-z_][A-Za-z0-9_]*`, `ident.h` contains:
+
+```c
+#include <stdint.h>
+
+/* generated from ident */
+static const int8_t ident_dfa[] = {
+10, -1, -1, -1, 3, 65, 90, 14, 95, 95, 14, 97, 122, 14, 0, -1, 
+-1, 4, 48, 57, 14, 65, 90, 14, 95, 95, 14, 97, 122, 14
+};
+```
 
 ## Source Generator (Luthor.Generator)
 

@@ -4,9 +4,32 @@ namespace Luthor;
 
 static class Program
 {
-  
+    static void DumpArray(int[] array, TextWriter writer)
+    {
+        for (var i = 0; i < array.Length; i++)
+        {
+            if (i % 16 == 0)
+            {
+                writer.WriteLine();
+            }
+            writer.Write(array[i]);
+            if (i < array.Length - 1)
+            {
+                writer.Write(", ");
+            }
+        }
+        writer.WriteLine();
+    }   
+    static string ReplaceTemplateArgs(string data, int width, string name)
+    {
+        data = data.Replace("%WIDTH%", width.ToString());
+        data = data.Replace("%NAME%", name);
+        return data;
+
+    }
     static void Main(string[] args)
     {
+        Options? toDispose = null;
         try
         {
             Console.OutputEncoding = Encoding.UTF8;
@@ -19,9 +42,9 @@ static class Program
                     Console.Error.WriteLine();
                 }
                 Options.PrintUsage();
-                if (error!.IsHelpRequest) return;
+                return;
             }
-
+            toDispose = options;
             var isPattern = false;
             if (options.RulesFileOrPattern!.IndexOfAny(Path.GetInvalidPathChars()) > -1)
             {
@@ -82,24 +105,40 @@ static class Program
                 }
             }
             Console.Error.WriteLine($"The array element width is {width} bits.");
-            for (var i = 0; i < array.Length; i++)
+            if (options.Template != null)
             {
-                if (i % 16 == 0)
+                var data = options.Template.ReadToEnd();
+                var oi = 0;
+                int i = data.IndexOf("%TABLE%",0);
+                while(i>-1)
                 {
-                    Console.WriteLine();
+                    if(i>oi)
+                    {
+                        options.Output.Write(ReplaceTemplateArgs(data.Substring(oi, i - oi),width,!isPattern?Path.GetFileNameWithoutExtension(options.RulesFileOrPattern):"expression"));
+                    }
+                    DumpArray(array, options.Output);
+                    oi = i+7;
+                    i = data.IndexOf("%TABLE%", i + 1);
                 }
-                Console.Write(array[i]);
-                if (i < array.Length - 1)
+                if(oi<data.Length+7)
                 {
-                    Console.Write(", ");
+                    options.Output.Write(ReplaceTemplateArgs(data.Substring(oi, data.Length - oi), width, !isPattern ? Path.GetFileNameWithoutExtension(options.RulesFileOrPattern) : "expression"));
                 }
             }
-            Console.WriteLine();
+            else
+            {
+                DumpArray(array, options.Output);
+            }
+            
 
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Error: {ex.Message}");
+        }
+        finally
+        {
+            toDispose?.Dispose();
         }
     }
 }

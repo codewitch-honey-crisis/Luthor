@@ -40,7 +40,11 @@ namespace Luthor
         public bool NoError { get; set; } = false;
         [CmdArg(Description = "use Unicode character groups", ValueName = "unicode",ShortName ='u')]
         public bool Unicode { get; set; } = false;
-        [CmdArg(Description = "generate a DFA graph (requires GraphViz in your PATH)", ValueName = "graph-file",ShortName ='g')]
+        [CmdArg(Description = "Emit the output to the specified file", ValueName = "output-file", ShortName = 'o')]
+        public TextWriter Output { get; set; } = Console.Out;
+        [CmdArg(Description = "Emit the output using the specified template file", ValueName = "template-file", ShortName = 't')]
+        public TextReader? Template { get; set; } = null;
+        [CmdArg(Description = "generate a DFA graph (requires GraphViz in your PATH)", ValueName = "graph-file", ShortName = 'g')]
         public string? Graph { get; set; } = null;
         [CmdArg(Description = "use vertical DFA graphs", ValueName = "vertical",ShortName ='v')]
         public bool Vertical { get; set; } = false;

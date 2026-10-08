@@ -4,4 +4,4 @@ Import("env")
 
 print("Luthor integration enabled")
 
-env.Execute("python luthor.py demo.lex > include/lex_table.dfa")
+env.Execute("python luthor.py demo.lex -t dfa_template.tpl > include/dfa_table.h")

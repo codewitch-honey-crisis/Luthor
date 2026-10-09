@@ -17,9 +17,9 @@ using System.Text;
 
 namespace Luthor;
 
-internal static class Compiler
+public static class Compiler
 {
-    internal static int[] Compile(CodepointDfa cpDfa, string encoding = "UTF-8", bool minimize = true)
+    public static int[] Compile(CodepointDfa cpDfa, string encoding = "UTF-8", bool minimize = true)
     {
         var (states, newline) = Transform(cpDfa.States, encoding, cpDfa.ErrorId);
         if (minimize) states = Minimize(states);

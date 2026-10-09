@@ -29,9 +29,9 @@
     <Title>Luthor Source Generator</Title>
     <Authors>honey the codewitch</Authors>
     <Copyright>Copyright (C) 2026 by honey the codewitch</Copyright>
-    <AssemblyVersion>5.3.0.0</AssemblyVersion>
-    <FileVersion>5.3.0.0</FileVersion>
-    <Version>5.3.0</Version>
+    <AssemblyVersion>6.0.0.0</AssemblyVersion>
+    <FileVersion>6.0.0.0</FileVersion>
+    <Version>6.0.0</Version>
     <RepositoryUrl>https://github.com/codewitch-honey-crisis/Luthor</RepositoryUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>

@@ -3,7 +3,7 @@ using System.IO;
 namespace Luthor;
 static class FileParser
 {
-	internal static IEnumerable<string> ReadFrom(TextReader reader)
+	public static IEnumerable<string> ReadFrom(TextReader reader)
 	{
 		string? line;
 		int lineNumber = 1;

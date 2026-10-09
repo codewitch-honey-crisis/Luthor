@@ -20,7 +20,7 @@ namespace Luthor
 {
     // A DFA state, used both for the codepoint DFA and for the code-unit DFA.
     // Bol / Eol are zero-width edges taken when at a line start / before '\n' or end of input.
-    internal sealed class DfaState
+    public sealed class DfaState
     {
         internal int Accept = -1, Bol = -1, Eol = -1;
         internal List<(int Lo, int Hi, int To)> Moves = new(); // sorted, non-overlapping
@@ -28,10 +28,10 @@ namespace Luthor
 
     // Output of LazyAsu.Build: codepoint-level states (state 0 is the start state) and the
     // accept id of the error rule, or -1 if there is none.
-    internal sealed record CodepointDfa(List<DfaState> States, int ErrorId);
+    public sealed record CodepointDfa(List<DfaState> States, int ErrorId);
 
     // Lazy-aware Aho-Sethi-Ullman (followpos) DFA construction.
-    internal sealed class Builder
+    public sealed class Builder
     {
         // A position is a leaf in the regex, plus a lazy tag. Accept "positions" use Id = rule index.
         // The same leaf with different lazy tags is a DIFFERENT position.
@@ -467,7 +467,7 @@ namespace Luthor
         // matches any single character, so every position of the input produces a token. The
         // encoder extends it to invalid code units (see Compiler).
         // unicode selects Unicode definitions for POSIX classes, \p{..}, \d \w \s (see ClassRanges).
-        internal static CodepointDfa Build(IReadOnlyList<string> rules, bool errorRule = false, bool unicode = false)
+        public static CodepointDfa Build(IReadOnlyList<string> rules, bool errorRule = false, bool unicode = false)
         {
             var builder = new Builder(unicode);
             if (errorRule) rules = rules.Append(@"[\x{0}-\x{10FFFF}]").ToList();

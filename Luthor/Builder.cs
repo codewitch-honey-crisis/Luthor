@@ -350,7 +350,7 @@ namespace Luthor
             int s = i;
             while (i < re.Length && char.IsDigit(re[i])) i++;
             if (s == i) throw new FormatException($"expected number at {s}");
-            return int.Parse(re.AsSpan(s, i - s).ToString());
+            return int.Parse(re.Substring(s, i - s));
         }
 
         Frag NewLeaf(LeafKind kind, List<(int, int)> set, int loc)

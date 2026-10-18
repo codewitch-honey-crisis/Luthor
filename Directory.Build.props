@@ -3,10 +3,10 @@
        samples. To release, change the numbers here. luthor.py isn't built by MSBuild, so its __version__
        carries the version too, as do the copies in PlatformIO/esp32 and PlatformIO/arduino_uno_r4. -->
   <PropertyGroup>
-    <Version>6.1.0</Version>
-    <PackageVersion>6.1.0</PackageVersion>
-    <AssemblyVersion>6.1.0.0</AssemblyVersion>
-    <FileVersion>6.1.0.0</FileVersion>
-    <InformationalVersion>6.1.0</InformationalVersion>
+    <Version>6.2.0</Version>
+    <PackageVersion>6.2.0</PackageVersion>
+    <AssemblyVersion>6.2.0.0</AssemblyVersion>
+    <FileVersion>6.2.0.0</FileVersion>
+    <InformationalVersion>6.2.0</InformationalVersion>
   </PropertyGroup>
 </Project>

@@ -3,6 +3,10 @@
     "Block Comment": {
       "commandName": "Project",
       "commandLineArgs": "\"\\/\\*(.|\\n)*?\\*\\/\""
+    },
+    "jsend": {
+      "commandName": "Project",
+      "commandLineArgs": "\"(\\n|.)*?end\\-javascript\""
     }
   }
 }

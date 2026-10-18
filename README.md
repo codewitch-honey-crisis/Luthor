@@ -297,6 +297,7 @@ if|while|for|int|void
 - Accept IDs assigned by line order (0, 1, 2, ...)
 - Supports POSIX character classes such as `[[:digit:]]` and `[[:alpha:]]`, and the equivalent `\p{Digit}` and `\p{Alpha}`; see [Character classes](#character-classes)
 - Lazy quantifiers: *?, +?, ??, {1,3}? (not quite POSIX due to DFA limitations)
+- Inline modifiers such as `(?i)` for case-insensitive matching; see [Inline modifiers](#inline-modifiers)
 
 ### Character classes
 
@@ -325,6 +326,32 @@ Character classes follow RE/flex. There are 14 named classes. Each can be writte
 - **Negation:** use `[[:^digit:]]`, `\P{Digit}`, `\p{^Digit}` or `[^[:digit:]]`.
 - **Combining:** classes can be mixed with other items in a bracket list, as in `[[:alpha:]_]` or `[\p{Upper}\p{Digit}]`.
 - **Outside brackets:** `[:alpha:]` on its own is an ordinary bracket list of the characters `:`, `a`, `l`, `p` and `h`, as in POSIX.
+
+### Inline modifiers
+
+Patterns can turn RE/flex's mode modifiers on and off from inside the expression. This works the same in `luthor`, `luthor.py` and the source generator.
+
+| Modifier | Effect |
+|---|---|
+| `i` | Case-insensitive. Folds ASCII letters only, unless Unicode mode is on, in which case all Unicode case pairs are folded (`é`/`É`, `σ`/`Σ`/`ς`, `k`/`K`/`K` Kelvin sign) |
+| `s` | Dot-all: `.` also matches `\n` |
+| `x` | Free-spacing: whitespace and `#` comments (to the end of the line) are ignored, except inside `[...]` and after `\`. Use `[ ]` or `\ ` to match a space |
+| `q` | Quotation: `"..."` is a literal string, as in Flex. `\"` is a quote, other escapes such as `\n` and `\x41` work as usual |
+| `u` | Unicode mode for [character classes](#character-classes) and for `i`. `(?-u)` turns it off where `--unicode` turned it on |
+| `m` | Accepted for compatibility. `^` and `$` always match at line boundaries in Luthor, so `(?m)` changes nothing and `(?-m)` is an error |
+
+The forms are:
+
+- `(?flags)` sets the flags for the rest of the enclosing group, or the rest of the rule at the top level. `a(?i)b` matches `ab` and `aB`, and `(a(?i)b)c` does not fold the `c`.
+- `(?flags:X)` sets the flags for `X` only. `(?i:select)` matches the keyword in any case.
+- `(?-flags)` and `(?flags-flags:X)` turn flags off, e.g. `(?i)select(?-i:_ID)`.
+- `(?:X)` is a plain non-capturing group, as before.
+
+Modifiers never carry over from one rule to the next.
+
+`\Q...\E` is always available: everything up to `\E` (or the end of the pattern) is literal, so `\Q1+1\E` matches the text `1+1`. A quoted string or `\Q...\E` block is one atom, so `"ab"+` matches `abab`.
+
+Under `i`, a bracket list is folded before it is negated, so `(?i)[^a]` matches neither `a` nor `A`. POSIX classes inside brackets are folded too (`(?i)[[:upper:]]` matches lower case letters), but escapes such as `\p{Upper}`, `\d` and `\w` are left as they are.
 
 ### Array Format
 

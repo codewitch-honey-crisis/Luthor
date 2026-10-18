@@ -54,6 +54,15 @@ class LuthorFormatError(Exception):
 # \p{Name} / \P{Name} / \p{^Name} with the same class names (Alpha, XDigit, ...),
 # ( ), (?: ), |, *, +, ?, {n}, {n,}, {n,m}, lazy forms of all quantifiers,
 # and the anchors ^ (line start) and $ (line end).
+# Literal text: \Q...\E always, and "..." in (?q) mode.
+# Inline modifiers as in RE/flex: (?imsxqu-imsxqu) applies to the rest of the enclosing group
+# (or rule), (?imsxqu-imsxqu:X) applies to X only.
+#   i  case-insensitive (ASCII letters; all Unicode letters when u is on)
+#   s  '.' also matches '\n'
+#   x  free-spacing: whitespace and # comments to end of line are ignored outside [...]
+#   q  "..." is a literal string, like \Q...\E
+#   u  Unicode definitions for classes (the default when build(..., unicode=True))
+#   m  accepted for compatibility: ^ and $ always match at line boundaries, so (?-m) is an error
 # Classes are ASCII unless build(..., unicode=True), which uses RE/flex's Unicode-mode
 # definitions from _UNICODE_CLASSES (at the end of this file).
 # ============================================================================
@@ -141,6 +150,67 @@ def _parse_hex(s):
     return v - (1 << 32) if v >= (1 << 31) else v
 
 
+# Inline modifier bits (see Builder.cs Mode)
+_M_I, _M_S, _M_X, _M_Q, _M_U = 1, 2, 4, 8, 16
+_MOD_BITS = {"i": _M_I, "s": _M_S, "x": _M_X, "q": _M_Q, "u": _M_U}
+
+_case_classes = None
+
+
+def _case_folding():
+    """Unicode case-equivalence classes (k, K and the Kelvin sign; s, S and long s; ...) as
+    {codepoint: (other members, ...)}, built once from Python's upper/lower case mappings.
+    Only one-to-one mappings count (so 'ß' has no upper case form here)."""
+    global _case_classes
+    if _case_classes is not None:
+        return _case_classes
+    parent = {}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]  # path halving
+            x = parent[x]
+        return x
+
+    def union(a, b):
+        parent.setdefault(a, a)
+        parent.setdefault(b, b)
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[max(ra, rb)] = min(ra, rb)
+
+    # planes 2 to 16 have no cased characters (the last ones are Adlam, below U+1E944)
+    for cp in range(0x20000):
+        if 0xD800 <= cp <= 0xDFFF or cp in (0x130, 0x131):
+            continue  # surrogates; Turkic dotted / dotless i stay apart from i, I
+        ch = chr(cp)
+        for other in (ch.upper(), ch.lower()):
+            if len(other) == 1 and other != ch:
+                union(cp, ord(other))
+    groups = {}
+    for cp in parent:
+        groups.setdefault(find(cp), []).append(cp)
+    res = {}
+    for g in groups.values():
+        for cp in g:
+            res[cp] = tuple(x for x in g if x != cp)
+    _case_classes = res
+    return res
+
+
+def _contains(norm, cp):
+    lo, hi = 0, len(norm) - 1
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        if cp < norm[mid][0]:
+            hi = mid - 1
+        elif cp > norm[mid][1]:
+            lo = mid + 1
+        else:
+            return True
+    return False
+
+
 def _is_digit(c):
     return c != "" and c.isdecimal()  # char.IsDigit: Unicode category Nd
 
@@ -168,7 +238,11 @@ class Builder:
     def __init__(self, unicode=False):
         # Unicode mode: POSIX classes, \p{..}, \d \w \s use Unicode definitions (as RE/flex's
         # %option unicode). Otherwise they are ASCII.
-        self.unicode = unicode
+        # (?u) / (?-u) change it inside a pattern. Inline modifier state: set for the rest of the
+        # enclosing group by (?flags), for a subexpression by (?flags:X), and reset to
+        # default_mode at the start of every rule.
+        self.default_mode = _M_U if unicode else 0
+        self.mode = self.default_mode
         self.leaves = []
         self.follow = {}       # leaf id -> followpos list
         self.all_lazies = []   # [(index, loc)]
@@ -192,7 +266,7 @@ class Builder:
 
     def _class_ranges(self, name):
         """Ranges of a canonical class name ("Alpha", "XDigit", ...), or None if there is none."""
-        if self.unicode:
+        if self.mode & _M_U:
             flat = _UNICODE_CLASSES.get(name)
             if flat is not None:
                 return [(flat[k], flat[k + 1]) for k in range(0, len(flat), 2)]
@@ -206,8 +280,9 @@ class Builder:
         return self.re[j] if j < len(self.re) else ""
 
     def parse_rule(self, pattern):
-        self.re, self.i = pattern, 0
+        self.re, self.i, self.mode = pattern, 0, self.default_mode
         f = self._alt()
+        self._skip_space()
         if self.i != len(self.re):
             raise LuthorFormatError(f"unexpected '{self.re[self.i]}' at {self.i}")
         self.offset += len(pattern) + 1
@@ -227,22 +302,81 @@ class Builder:
     def _concat(self):
         f = _Frag(nullable=True)
         first = True
-        while self.i < len(self.re) and self.re[self.i] not in "|)":
+        while True:
+            self._skip_space()
+            if self.i >= len(self.re) or self.re[self.i] in "|)":
+                break
+            # (?flags) changes the mode for the rest of the enclosing group; it matches nothing
+            mod = self._try_modifiers(self.i)
+            if mod is not None and not mod[2]:
+                self.mode, self.i = mod[0], mod[1]
+                continue
             g = self._postfix()
             if first:
                 f, first = g, False
                 continue
-            if f.nullable:
-                _add_all(f.first, g.first)
-            for p in f.last:
-                _add_all(self._f(p[2]), g.first)
-            if g.nullable:
-                _add_all(f.last, g.last)
-            else:
-                f.last = g.last
-                f.nullable = False
-            f.lazies.extend(g.lazies)
+            self._append(f, g)
         return f
+
+    def _append(self, f, g):
+        """f = f g (concatenation)"""
+        if f.nullable:
+            _add_all(f.first, g.first)
+        for p in f.last:
+            _add_all(self._f(p[2]), g.first)
+        if g.nullable:
+            _add_all(f.last, g.last)
+        else:
+            f.last = g.last
+            f.nullable = False
+        f.lazies.extend(g.lazies)
+
+    def _skip_space(self):
+        """In free-spacing mode (?x), skips whitespace and # comments (to the end of the line)."""
+        if not self.mode & _M_X:
+            return
+        re_ = self.re
+        while self.i < len(re_):
+            if re_[self.i].isspace():
+                self.i += 1
+            elif re_[self.i] == "#":
+                while self.i < len(re_) and re_[self.i] != "\n":
+                    self.i += 1
+            else:
+                break
+
+    def _try_modifiers(self, at):
+        """At '(' (index at): recognizes (?:, (?flags:, (?-flags:, (?flags-flags: and the same
+        ending in ')'. Returns (mode, end, scoped) or None: mode after applying the flags, the
+        index just past the ':' or ')', and whether it is the ':' form."""
+        re_ = self.re
+        if at + 1 >= len(re_) or re_[at] != "(" or re_[at + 1] != "?":
+            return None
+        j = at + 2
+        off = False
+        result = self.mode
+        while j < len(re_):
+            c = re_[j]
+            if c in ":)":
+                break
+            j += 1
+            if c == "-":
+                if off:
+                    return None
+                off = True
+                continue
+            if c == "m":
+                if off:
+                    raise LuthorFormatError(
+                        f"(?-m) is not supported at {at}: ^ and $ always match at line boundaries")
+                continue
+            bit = _MOD_BITS.get(c)
+            if bit is None:
+                return None
+            result = result & ~bit if off else result | bit
+        if j >= len(re_):
+            return None
+        return result, j + 1, re_[j] == ":"
 
     def _at_repeat(self):
         return self.i + 1 < len(self.re) and self.re[self.i] == "{" and _is_digit(self.re[self.i + 1])
@@ -253,8 +387,11 @@ class Builder:
         lazy_idx0 = self.lazy_idx
         f = self._atom()
         re_ = self.re
-        while (self.i < len(re_) and self.i < stop_at
-               and (re_[self.i] in "*+?" or self._at_repeat())):
+        while True:
+            self._skip_space()
+            if not (self.i < len(re_) and self.i < stop_at
+                    and (re_[self.i] in "*+?" or self._at_repeat())):
+                break
             if re_[self.i] == "{":
                 f = self._repeat(f, start, lazy_idx0)
                 continue
@@ -368,13 +505,21 @@ class Builder:
         loc = self.i
         c = self.re[self.i]
         if c == "(":
-            self.i += 1
-            if self._peek() == "?" and self._peek(1) == ":":
-                self.i += 2  # (?: ) = ( )
+            saved = self.mode  # modifiers set inside the group end with it
+            if self._peek(1) == "?":
+                # (?: ) = ( ); (?flags: ) also sets flags for the group.
+                # (?flags) alone is handled by _concat.
+                mod = self._try_modifiers(self.i)
+                if mod is None or not mod[2]:
+                    raise LuthorFormatError(f"unsupported group syntax at {self.i}")
+                self.mode, self.i = mod[0], mod[1]
+            else:
+                self.i += 1
             f = self._alt()
             if self._peek() != ")":
                 raise LuthorFormatError("missing )")
             self.i += 1
+            self.mode = saved
             return f
         if c == "^":
             self.i += 1
@@ -384,15 +529,89 @@ class Builder:
             return self._new_leaf(LINE_END, [], loc)
         if c == ".":
             self.i += 1
-            return self._new_leaf(CHAR, [(0, 9), (11, MAX_CP)], loc)
+            dot = [(0, MAX_CP)] if self.mode & _M_S else [(0, 9), (11, MAX_CP)]
+            return self._new_leaf(CHAR, dot, loc)
         if c == "[":
             return self._new_leaf(CHAR, self._parse_class(), loc)
         if c in "*+?)":
             raise LuthorFormatError(f"unexpected '{c}' at {self.i}")
+        if c == '"' and self.mode & _M_Q:
+            return self._literal(self._parse_quoted())
         if c == "\\":
-            return self._new_leaf(CHAR, self._parse_escape()[0], loc)
+            if self._peek(1) == "Q":
+                return self._literal(self._parse_qe())
+            rset, is_class = self._parse_escape()
+            return self._new_leaf(CHAR, rset if is_class else self._fold(rset), loc)
         cp = self._next_codepoint()
-        return self._new_leaf(CHAR, [(cp, cp)], loc)
+        return self._new_leaf(CHAR, self._fold([(cp, cp)]), loc)
+
+    def _literal(self, cps):
+        """A literal string (from \\Q...\\E or "...") as a concatenation of one leaf per
+        codepoint; it is one atom, so a quantifier after it repeats the whole string."""
+        if not cps:
+            return _Frag(nullable=True)
+        f = None
+        for cp, at in cps:
+            g = self._new_leaf(CHAR, self._fold([(cp, cp)]), at)
+            if f is None:
+                f = g
+            else:
+                self._append(f, g)
+        return f
+
+    def _parse_qe(self):
+        """At "\\Q": everything up to "\\E" (or the end of the pattern) is literal."""
+        self.i += 2
+        res = []
+        re_ = self.re
+        while self.i < len(re_) and not (re_[self.i] == "\\" and self._peek(1) == "E"):
+            at = self.i
+            res.append((self._next_codepoint(), at))
+        if self.i < len(re_):
+            self.i += 2
+        return res
+
+    def _parse_quoted(self):
+        """At '"' in (?q) mode: a Flex-style quoted string. Backslash escapes work as outside
+        quotes (\\" is a quote, \\\\ a backslash, \\n a newline, ...), but not class escapes."""
+        start = self.i
+        self.i += 1
+        res = []
+        while True:
+            if self.i >= len(self.re):
+                raise LuthorFormatError(f'missing closing " for the string at {start}')
+            if self.re[self.i] == '"':
+                self.i += 1
+                return res
+            at = self.i
+            if self.re[self.i] == "\\":
+                e, is_class = self._parse_escape()
+                if is_class:
+                    raise LuthorFormatError(f"class escape inside a quoted string at {at}")
+                res.append((e[0][0], at))
+            else:
+                res.append((self._next_codepoint(), at))
+
+    def _fold(self, rset):
+        """Under (?i), adds the other-case forms of every character in rset. ASCII letters only,
+        unless Unicode mode is on, in which case every Unicode case pair is used."""
+        if not self.mode & _M_I:
+            return rset
+        res = list(rset)
+        if not self.mode & _M_U:
+            for lo, hi in rset:
+                a, b = max(lo, 65), min(hi, 90)
+                if a <= b:
+                    res.append((a + 32, b + 32))
+                a, b = max(lo, 97), min(hi, 122)
+                if a <= b:
+                    res.append((a - 32, b - 32))
+            return _normalize(res)
+        norm = _normalize(rset)
+        for cp, others in _case_folding().items():
+            if _contains(norm, cp):
+                res.extend((o, o) for o in others)
+        return _normalize(res)
 
     def _next_codepoint(self):
         a = ord(self.re[self.i])
@@ -496,6 +715,8 @@ class Builder:
                 if hi < lo:
                     raise LuthorFormatError("bad range in class")
             rset.append((lo, hi))
+        # under (?i) the class is case-folded before negation: (?i)[^a] matches neither a nor A
+        rset = self._fold(rset)
         return _complement(rset) if neg else _normalize(rset)
 
     def _parse_posix_class(self):
@@ -1235,7 +1456,7 @@ def read_rules(text):
 # Program
 # ============================================================================
 
-__version__ = "5.0.0.0"
+__version__ = "6.1.0.0"
 
 _USAGE = """luthor v{version}
 
